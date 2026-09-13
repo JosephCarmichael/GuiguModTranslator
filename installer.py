@@ -104,7 +104,13 @@ def install(project, game, runtime_dir=None):
         raise ValueError('The source mod has moved or was removed. Refresh mods and extract it again.')
     entries = {}
     skipped = 0
-    for unit in project['units']:
+    conflicts = set()
+    # Prefer explicit edits, then existing mod translations, then machine output.
+    # Stable IDs and text break ties without depending on extraction order.
+    rank = {'edited': 0, 'existing': 1}
+    units = sorted(project['units'], key=lambda u: (rank.get(u.get('status'), 2),
+                   str(u.get('id', '')), u.get('translation') or ''))
+    for unit in units:
         source, target = unit['source'], unit.get('translation', '')
         if unit['category'] == 'technical':
             continue
@@ -112,8 +118,8 @@ def install(project, game, runtime_dir=None):
             skipped += 1
             continue
         if source in entries and entries[source] != target:
-            raise ValueError('This project contains conflicting translations for the same text.')
-        entries[source] = target
+            conflicts.add(source)
+        entries.setdefault(source, target)
     if not entries:
         raise ValueError('No validated translations are ready to install. Saved work has been kept.')
     loader, store = paths(game)
@@ -125,10 +131,13 @@ def install(project, game, runtime_dir=None):
             for source, target in entries.items():
                 previous = other['entries'].get(source)
                 if previous is not None and previous != target:
-                    raise ValueError('A translation conflicts with installed mod ' + other['name'] +
-                                     '. Use the editor to give identical source text the same translation, or remove that mod’s translations.')
+                    conflicts.add(source)
+        # Keep each mod's dictionary intact. The runtime chooses the newest
+        # installation; uninstalling it naturally reveals the previous wording.
+        order = max((other.get('install_order', 0) for other in value['mods'].values()), default=0) + 1
         value['mods'][mod['id']] = {'name': mod['name'], 'source_path': str(Path(mod['path']).resolve()),
-                                   'installed_at': datetime.now(timezone.utc).isoformat(), 'entries': entries}
+                                   'installed_at': datetime.now(timezone.utc).isoformat(), 'install_order': order,
+                                   'conflicts_resolved': len(conflicts), 'entries': entries}
         old_loader = loader.read_bytes() if loader.exists() else None
         changed = old_loader != payload
         wrote_loader = False
@@ -147,7 +156,16 @@ def install(project, game, runtime_dir=None):
                     atomic_bytes(loader, old_loader)
             raise
     return {'state': 'installed', 'count': len(entries), 'skipped': skipped, 'mod': mod['id'],
-            'restart_required': True, 'store': str(store), 'loader': str(loader)}
+            'conflicts_resolved': len(conflicts), 'restart_required': True, 'store': str(store), 'loader': str(loader)}
+
+
+def installation_message(result, partial=False):
+    message = f'Installed {result["count"]:,} translations.'
+    if result.get('conflicts_resolved'):
+        message += f' Automatically resolved {result["conflicts_resolved"]:,} text conflicts.'
+    if partial:
+        message += ' Some text still needs review.'
+    return message + ' Restart the game to use them.'
 
 
 def uninstall(mod_id, game):

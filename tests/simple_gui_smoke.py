@@ -27,7 +27,7 @@ try:
         saved.assert_called_once_with(batch_size=48)
     app.update()
     ImageGrab.grab(window=app.winfo_id()).save(APP/'projects/simple-preview.png')
-    fake={'state':'success','count':3,'pending':0,'installation':{'count':3},'folder':str(APP/'projects/2859071194')}
+    fake={'state':'success','count':3,'pending':0,'installation':{'count':3,'conflicts_resolved':2},'folder':str(APP/'projects/2859071194')}
     with patch('desktop.run_job',return_value=fake) as job:
         app.translate()
         assert str(app.parallel.cget('state')) == 'disabled'
@@ -38,10 +38,11 @@ try:
         assert job.call_args.kwargs['concurrency'] == 32
         assert job.call_args.kwargs['batch_size'] == 48
     assert app.status.get().startswith('Installed 3')
+    assert 'resolved 2 text conflicts' in app.status.get()
     assert str(app.parallel.cget('state')) == 'readonly'
     assert str(app.batch_choice.cget('state')) == 'readonly'
     ImageGrab.grab(window=app.winfo_id()).save(APP/'projects/simple-success-test.png')
-    atomic_json(APP/'projects/simple-gui-check.json',{'result':'passed','mods':len(app.mods),'checks':['mod discovery','selection','parallel request options','saved request limit','selected limit forwarded to job','limit locked during job','batch choices and saved preference','selected batch size forwarded to job','batch size locked during job','simulated success display']})
+    atomic_json(APP/'projects/simple-gui-check.json',{'result':'passed','mods':len(app.mods),'checks':['mod discovery','selection','parallel request options','saved request limit','selected limit forwarded to job','limit locked during job','batch choices and saved preference','selected batch size forwarded to job','batch size locked during job','simulated success display','automatic conflict resolution count']})
     print('Simple window checks passed')
 finally:
     app.destroy()

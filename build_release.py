@@ -61,7 +61,7 @@ def package(exe, side_by_side=False):
     assert embedded==expected
     assert not any(name.replace('\\','/').endswith('/service.json') or name=='service.json'
                    or name.replace('\\','/').startswith('projects/') for name in contents.toc)
-    suffix = '-Batches-'+datetime.now().strftime('%Y%m%d-%H%M%S') if side_by_side else ''
+    suffix = '-Updated-'+datetime.now().strftime('%Y%m%d-%H%M%S') if side_by_side else ''
     destination=ROOT/'release'/('GuiguModTranslator'+suffix)
     destination.mkdir(parents=True,exist_ok=True)
     try:
@@ -87,6 +87,9 @@ def package(exe, side_by_side=False):
         'Entries per request selects 12, 24, 48 (default), or 96 text entries.\n'
         'The app retains a 6,000-character target and splits truncated batches.\n'
         'Existing translations are reused when changing provider or batch size.\n\n'
+        'Text conflicts resolve automatically: the latest installed translation wins.\n'
+        'Removing it restores the other installed mod’s wording. Manual edits win\n'
+        'over machine translations when duplicate text occurs within a project.\n\n'
         'If the provider is busy, the app reduces actual concurrency and shows a\n'
         'retry countdown. The selected number remains the maximum. Errors and\n'
         'retries are recorded in request-errors.jsonl inside the saved project.\n\n'
@@ -158,7 +161,7 @@ if __name__=='__main__':
     (ROOT/'projects').mkdir(exist_ok=True)
     subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                     str(ROOT/'loader/Build.ps1'), '-GameRoot', str(game), '-Test'], check=True)
-    output = ROOT/'dist'/('batch-update-'+datetime.now().strftime('%Y%m%d-%H%M%S')) if args.side_by_side else ROOT/'dist'
+    output = ROOT/'dist'/('update-'+datetime.now().strftime('%Y%m%d-%H%M%S')) if args.side_by_side else ROOT/'dist'
     preview=build(False, output)
     verify(preview,'frozen-onedir-check')
     final=build(True, output)

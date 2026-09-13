@@ -43,17 +43,67 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(), self.before)
         self.assertEqual(len(list((store.parent / 'backups').glob('*.json'))), 2)
 
-    def test_conflict_is_rejected_before_changes(self):
+    def test_conflict_installs_with_new_priority_and_preserves_other_dictionary(self):
         installer.install(self.project, self.game)
         loader, store = installer.paths(self.game)
         original = store.read_bytes()
         second = copy.deepcopy(self.project)
         second['mod'].update(id='two', name='Two')
         next(u for u in second['units'] if u['source'] == '宝剑')['translation'] = 'Treasure sword'
-        with self.assertRaisesRegex(ValueError, 'conflicts'):
-            installer.install(second, self.game)
-        self.assertEqual(store.read_bytes(), original)
+        result = installer.install(second, self.game)
+        self.assertEqual(result['conflicts_resolved'], 1)
+        mods = installer.read_store(store)['mods']
+        self.assertEqual(mods['one']['entries']['宝剑'], 'Sword')
+        self.assertEqual(mods['two']['entries']['宝剑'], 'Treasure sword')
+        self.assertGreater(mods['two']['install_order'], mods['one']['install_order'])
+        self.assertIn(original, [p.read_bytes() for p in (store.parent/'backups').glob('*.json')])
+        self.assertEqual(self.source.read_bytes(), self.before)
+        installer.uninstall('two', self.game)
+        self.assertEqual(installer.read_store(store)['mods']['one'], mods['one'])
         self.assertFalse(store.with_suffix('.lock').exists())
+
+    def test_duplicate_project_text_prefers_manual_edit_without_mutating_project(self):
+        machine = copy.deepcopy(next(u for u in self.project['units'] if u['source'] == '宝剑'))
+        machine.update(id='000', status='machine', translation='Treasure sword')
+        self.project['units'].insert(0, machine)
+        original = copy.deepcopy(self.project)
+        result = installer.install(self.project, self.game)
+        self.assertEqual(result['conflicts_resolved'], 1)
+        _, store = installer.paths(self.game)
+        self.assertEqual(installer.read_store(store)['mods']['one']['entries']['宝剑'], 'Sword')
+        self.assertEqual(self.project, original)
+        self.project['units'].reverse()
+        installer.install(self.project, self.game)
+        self.assertEqual(installer.read_store(store)['mods']['one']['entries']['宝剑'], 'Sword')
+
+    def test_reinstall_takes_priority_and_identical_text_is_not_a_conflict(self):
+        installer.install(self.project, self.game)
+        second = copy.deepcopy(self.project)
+        second['mod'].update(id='two', name='Two')
+        self.assertEqual(installer.install(second, self.game)['conflicts_resolved'], 0)
+        next(u for u in self.project['units'] if u['source'] == '宝剑')['translation'] = 'Edited sword'
+        self.assertEqual(installer.install(self.project, self.game)['conflicts_resolved'], 1)
+        _, store = installer.paths(self.game)
+        mods = installer.read_store(store)['mods']
+        self.assertGreater(mods['one']['install_order'], mods['two']['install_order'])
+        self.assertEqual(mods['two']['entries']['宝剑'], 'Sword')
+
+    def test_legacy_store_gets_install_priority_and_backup(self):
+        installer.install(self.project, self.game)
+        _, store = installer.paths(self.game)
+        old = installer.read_store(store)
+        old['mods']['one'].pop('install_order')
+        store.write_text(json.dumps(old), encoding='utf-8')
+        second = copy.deepcopy(self.project)
+        second['mod']['id'] = 'two'
+        installer.install(second, self.game)
+        self.assertEqual(installer.read_store(store)['mods']['two']['install_order'], 1)
+
+    def test_conflict_success_message_includes_resolution_and_review_counts(self):
+        message = installer.installation_message({'count': 125, 'conflicts_resolved': 3}, partial=True)
+        self.assertIn('Installed 125', message)
+        self.assertIn('resolved 3 text conflicts', message)
+        self.assertIn('still needs review', message)
 
     def test_invalid_and_review_entries_never_reach_runtime(self):
         for unit in self.project['units']:

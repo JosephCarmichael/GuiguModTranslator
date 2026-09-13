@@ -107,7 +107,12 @@ tags and placeholders remain intact.
 
 Translations affect display components globally: identical Chinese text may also
 appear in another mod or the base game. Conflicting translations across installed
-mods are rejected; ambiguous formatted matches remain unchanged. Translations
+mods resolve automatically: the most recently installed dictionary takes priority.
+The other dictionaries keep their own translations, so removing the newer one
+restores the previous wording. Reinstalling a dictionary gives it priority again.
+Within a project, manual edits win over existing mod translations, then machine
+output; stable entry IDs break ties. Invalid formatting and entries needing review
+are still excluded. Ambiguous formatted matches remain unchanged. Translations
 remain active until removed in this app, even if a source mod is disabled in the
 game. Dictionaries whose source path no longer exists are skipped at startup.
 Custom renderers, text baked into images, and dynamically combined text without
@@ -201,8 +206,9 @@ specifies `deepseek-flash` as the API model name.
 The `translate` CLI command still saves a project; run `install` afterwards.
 Add `--concurrency 32` (or another listed value) to override the saved request limit
 for that translation run, for example `entry.py translate projects/2859071194 --concurrency 64`.
-The main desktop button runs both steps. Installation conflicts are resolved in
-the editor or by removing the other installed dictionary, then retrying installation.
+The main desktop button runs both steps. Installation conflicts resolve automatically
+and the success message reports their count. If a previous installation stopped on
+a conflict, choose **Options → Install saved translations** to retry without API calls.
 
 The runtime uses [Harmony prefix patches](https://harmony.pardeike.net/v2/articles/patching-injections.html)
 to substitute the text argument before Unity displays it. Build references come
@@ -223,3 +229,6 @@ with `build_release.py --offline --side-by-side`.
 
 [Larger batches and resume validation](BATCH_SIZE_VALIDATION.md) records the
 provider-switch checks and fixes for narration and percentage validation.
+
+[Automatic conflict resolution validation](CONFLICT_RESOLUTION_VALIDATION.md)
+records installation priority, reversible removal and runtime checks.

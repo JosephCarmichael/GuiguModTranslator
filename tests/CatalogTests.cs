@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Web.Script.Serialization;
 using GuiguModTranslation;
 
 static class CatalogTests
@@ -33,6 +34,44 @@ static class CatalogTests
         Equal("恢复25灵力", ambiguous.Translate("恢复25灵力"));
         // Repeated lookups exercise the bounded cache too.
         Equal("<color=red>Restore 25 spirit</color>", catalog.Translate("<color=red>恢复25灵力</color>"));
+        TestInstalledConflicts();
         Console.WriteLine(count + " catalog assertions passed.");
+    }
+
+    static void TestInstalledConflicts()
+    {
+        var older = new InstalledMod { source_path = "present", installed_at = "2026-09-13T10:00:00Z", install_order = 1,
+            entries = new Dictionary<string, string> { { "宝剑", "Sword" }, { "灵力", "Spirit" } } };
+        var newer = new InstalledMod { source_path = "present", installed_at = "2026-09-13T09:00:00Z", install_order = 2,
+            entries = new Dictionary<string, string> { { "宝剑", "Treasure sword" }, { "灵力", "Spirit" } } };
+        var store = new InstalledStore { format = "guigu-installed-v1", mods = new Dictionary<string, InstalledMod> {
+            { "z-old", older }, { "a-new", newer } } };
+        // Use the same serializer as the game; installation order beats clock changes.
+        var json = new JavaScriptSerializer();
+        store = json.Deserialize<InstalledStore>(json.Serialize(store));
+        int conflicts;
+        var resolved = InstalledTranslations.Resolve(store, path => path == "present", out conflicts);
+        Equal("Treasure sword", new TranslationCatalog(resolved).Translate("宝剑"));
+        Equal("1", conflicts.ToString());
+        Equal("Sword", store.mods["z-old"].entries["宝剑"]);
+        store.mods["a-new"].source_path = "missing";
+        Equal("Sword", InstalledTranslations.Resolve(store, path => path == "present", out conflicts)["宝剑"]);
+        Equal("0", conflicts.ToString());
+        store.mods["a-new"].source_path = "present";
+        store.mods["z-old"].install_order = 3;
+        Equal("Sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
+        store.mods.Remove("z-old");
+        Equal("Treasure sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
+        // Legacy dictionaries have no sequence. Timestamp, then ordinal mod ID,
+        // resolves priority consistently regardless of JSON dictionary order.
+        older.install_order = newer.install_order = 0;
+        store.mods = new Dictionary<string, InstalledMod> { { "a", newer }, { "z", older } };
+        Equal("Sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
+        older.installed_at = newer.installed_at = null;
+        Equal("Treasure sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
+        store.mods = new Dictionary<string, InstalledMod> { { "z", older }, { "a", newer } };
+        Equal("Treasure sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
+        newer.entries["宝剑"] = " ";
+        Equal("Sword", InstalledTranslations.Resolve(store, path => true, out conflicts)["宝剑"]);
     }
 }

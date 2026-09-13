@@ -67,7 +67,9 @@ remaining entry, with no hook errors. The final executable then reinstalled all
 
 Restart the game after installation, updates or removal. Identical text is matched
 across the game's display components, so the same source may also translate in
-other mods or the base game. Conflicting installed translations are rejected.
+other mods or the base game. The original validation rejected conflicting
+translations; the current behavior is documented in
+[Automatic conflict resolution](CONFLICT_RESOLUTION_VALIDATION.md).
 Advanced formatting, custom renderers, image text, and unmatched generated strings
 may remain Chinese. The loader targets bundled MelonLoader 0.5.x; installations
 with other runtime families are rejected by preflight. No clean Windows VM or

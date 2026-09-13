@@ -21,11 +21,11 @@ function Compile($name, $sources, $references, $target) {
     & $dotnet $compiler /noconfig "@$response"
     if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $name" }
 }
-Compile 'GuiguModTranslation.dll' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'TranslationMod.cs')) ($refs + $gameRefs) 'library'
+Compile 'GuiguModTranslation.dll' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $PSScriptRoot 'TranslationMod.cs')) ($refs + $gameRefs) 'library'
 $hash = (Get-FileHash (Join-Path $output 'GuiguModTranslation.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.0.0';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
+[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.1.0';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
 if ($Test) {
-    Compile 'CatalogTests.exe' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $root 'tests/CatalogTests.cs')) $refs 'exe'
+    Compile 'CatalogTests.exe' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $root 'tests/CatalogTests.cs')) $refs 'exe'
     & (Join-Path $output 'CatalogTests.exe')
     if ($LASTEXITCODE -ne 0) { throw 'Catalog tests failed.' }
     Compile 'GuiguTranslationProbe.dll' @((Join-Path $root 'tests/RuntimeProbe.cs')) ($refs + $gameRefs + @((Join-Path $GameRoot 'MelonLoader/Managed/UnityEngine.UIModule.dll'))) 'library'

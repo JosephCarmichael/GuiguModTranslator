@@ -267,10 +267,10 @@ def gui():
 
         def install_in_game(self):
             if self.busy or not self.project: return
-            from installer import install
+            from installer import install, installation_message
             try:
                 result = install(self.project, Path(self.game.get()))
-                self.status.set(f'Installed {result["count"]:,} saved translations. Restart the game to use them.')
+                self.status.set(installation_message(result))
             except Exception as exc:
                 messagebox.showerror('Installation failed', str(exc))
 

@@ -11,6 +11,7 @@ from app_config import APP_DIR, installed_game, CONCURRENCY_CHOICES, translation
 from app_config import BATCH_SIZE_CHOICES, translation_batch_size
 from extractor import APP, atomic_json, discover
 from mod_workflow import run_job
+from installer import installation_message
 
 class App(tk.Tk):
     def __init__(self):
@@ -216,7 +217,7 @@ class App(tk.Tk):
                     if state == 'success':
                         installed = value.get('installation')
                         if installed:
-                            self.status.set(f'Installed {installed["count"]:,} translations. Restart the game to use them.')
+                            self.status.set(installation_message(installed))
                         else:
                             self.status.set('Translations saved, but installation did not complete. Use Options → Install saved translations.')
                     elif state == 'empty':
@@ -226,7 +227,7 @@ class App(tk.Tk):
                     else:
                         installed = value.get('installation')
                         if installed:
-                            self.status.set(f'Installed {installed["count"]:,} translations. Some text still needs review. Restart the game to use the installed text.')
+                            self.status.set(installation_message(installed, partial=True))
                         else:
                             self.status.set(f'{value["count"]:,} translations saved. Some text still needs review; see the saved files.')
                     self.result_button.pack(before=self.action, pady=(10, 0))
@@ -260,7 +261,7 @@ class App(tk.Tk):
             # Discovery is authoritative if the game or Workshop library moved.
             project['mod'] = self.mods[selection]
             result = install(project, self.game)
-            self.status.set(f'Installed {result["count"]:,} translations. Restart the game to use them.')
+            self.status.set(installation_message(result))
         except FileNotFoundError:
             self.status.set('No saved translation project yet. Click Translate and install first.')
         except Exception as exc:

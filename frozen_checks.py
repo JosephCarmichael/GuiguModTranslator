@@ -99,6 +99,25 @@ def check(report_path, live=False):
             translated_text = restore(masked.replace('灵力', 'Spirit').replace('闪避', ' dodge'), tokens)
             assert not validate_translation(source, translated_text)
             report['checks'].append('Narration is translated while rich text, percentages and placeholders are preserved')
+            from installer import install, uninstall, paths, read_store
+            import copy
+            first = {'mod': {'id': 'first', 'name': 'First', 'path': str(mod)},
+                     'units': [{'id': 'sword', 'source': '宝剑', 'translation': 'Sword',
+                                'status': 'edited', 'category': 'player_text'}]}
+            second = copy.deepcopy(first)
+            second['mod']['id'] = 'second'
+            second['units'][0]['translation'] = 'Treasure sword'
+            with patch('installer.preflight', return_value=(runtime / LOADER).read_bytes()):
+                install(first, temp/'game')
+                result = install(second, temp/'game')
+            assert result['conflicts_resolved'] == 1
+            _, store = paths(temp/'game')
+            mods = read_store(store)['mods']
+            assert mods['second']['install_order'] > mods['first']['install_order']
+            assert mods['first']['entries']['宝剑'] == 'Sword'
+            uninstall('second', temp/'game')
+            assert read_store(store)['mods']['first']['entries']['宝剑'] == 'Sword'
+            report['checks'].append('Conflicting installation succeeds, preserves other dictionaries and uninstalls independently')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')
