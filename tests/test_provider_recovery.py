@@ -102,7 +102,7 @@ class ProviderRecoveryTests(unittest.TestCase):
             return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps(translated(texts))}}]}).encode())
         with tempfile.TemporaryDirectory() as directory:
             with patch('translation.service_profile', return_value=PROFILE), patch('translation.urllib.request.urlopen', http):
-                result = translate(project, directory, concurrency=16)
+                result = translate(project, directory, batch_size=12, concurrency=16)
             self.assertEqual(result['translated'], 12)
             event = json.loads((Path(directory)/'request-errors.jsonl').read_text())
             self.assertEqual(event['code'], 500)

@@ -13,7 +13,7 @@ from email.utils import parsedate_to_datetime
 import urllib.error
 import urllib.request
 from pathlib import Path
-from app_config import service_profile, translation_concurrency, CONCURRENCY_CHOICES
+from app_config import service_profile, translation_concurrency, CONCURRENCY_CHOICES, translation_batch_size, BATCH_SIZE_CHOICES
 from extractor import TOKENS, CJK, save_project, validate_translation
 
 DEFAULT_ENGINE = 'deepseek'
@@ -22,6 +22,10 @@ DEEPSEEK_MODEL = 'deepseek-flash'
 MAX_REQUEST_ATTEMPTS = 8
 
 class TranslationError(Exception):
+    pass
+
+
+class BatchTooLarge(TranslationError):
     pass
 
 
@@ -191,7 +195,7 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
                 raise ProviderError(provider_error_code(result['error']))
             message = result['choices'][0]
             if message.get('finish_reason') == 'length':
-                raise TranslationError('The response was too long. Progress is saved; retry to continue.')
+                raise BatchTooLarge('The response exceeded the output limit.')
             content = message['message'].get('content') or ''
             content = re.sub(r'^```(?:json)?\s*|\s*```$', '', content.strip())
             values = json.loads(content)
@@ -223,14 +227,19 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
                                    f'{MAX_REQUEST_ATTEMPTS} attempts and automatic slowdown. Progress is saved; '
                                    'see request-errors.jsonl in the saved project. Resume when the service recovers.')
 
-def translate(project, folder, target='en', progress=None, stop=None, glossary=None, include_review=False, concurrency=None):
+def translate(project, folder, target='en', progress=None, stop=None, glossary=None, include_review=False, concurrency=None, batch_size=None):
     stop = stop or (lambda: False)
     progress = progress or (lambda _: None)
     concurrency = translation_concurrency() if concurrency is None else concurrency
     if type(concurrency) is not int or concurrency not in CONCURRENCY_CHOICES:
         raise ValueError('Parallel requests must be one of: ' + ', '.join(map(str, CONCURRENCY_CHOICES)))
+    batch_size = translation_batch_size() if batch_size is None else batch_size
+    if type(batch_size) is not int or batch_size not in BATCH_SIZE_CHOICES:
+        raise ValueError('Entries per request must be one of: ' + ', '.join(map(str, BATCH_SIZE_CHOICES)))
     units = [u for u in project['units'] if not u['translation'] and u['category'] != 'technical'
              and (include_review or u['category'] == 'player_text')]
+    existing = sum(bool(u['translation']) for u in project['units'] if u['category'] != 'technical'
+                   and (include_review or u['category'] == 'player_text'))
     if not units:
         return {'translated': 0, 'failed': 0, 'total': 0, 'cancelled': False}
     profile = service_profile()
@@ -241,7 +250,7 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     batches, batch, chars = [], [], 0
     for unit in units:
         n = len(unit['source'])
-        if batch and (len(batch) >= 12 or chars + n > 6000):
+        if batch and (len(batch) >= batch_size or chars + n > 6000):
             batches.append(batch)
             batch, chars = [], 0
         batch.append(unit)
@@ -307,7 +316,8 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
             if not pending:
                 break
             log_errors()
-            progress(f'Translated {done:,} of {len(units):,} entries · {gate.status()}'
+            progress(f'{existing + done:,} translations saved · {done:,} of {len(units):,} remaining entries translated · '
+                     f'up to {batch_size} entries/request · {gate.status()}'
                      + (' · Stopping and saving…' if stopped() else ''))
             completed, _ = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
             changed = False
@@ -320,6 +330,14 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
                 except InterruptedError:
                     cancelled = True
                     abort.set()
+                except BatchTooLarge:
+                    if len(batch) > 1:
+                        middle = len(batch) // 2
+                        batches.extend((batch[:middle], batch[middle:]))
+                    else:
+                        batch[0]['translation_error'] = 'Single entry exceeds the response limit; review this long text.'
+                        failed += 1
+                        changed = True
                 except Exception as exc:
                     if first_error is None:
                         first_error = exc
@@ -337,4 +355,4 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
         executor.shutdown(wait=True, cancel_futures=True)
         log_errors()
         save_project(project, folder)
-    return {'translated': done, 'failed': failed, 'total': len(units), 'cancelled': cancelled or stop(), 'concurrency': concurrency}
+    return {'translated': done, 'failed': failed, 'total': len(units), 'cancelled': cancelled or stop(), 'concurrency': concurrency, 'batch_size': batch_size}

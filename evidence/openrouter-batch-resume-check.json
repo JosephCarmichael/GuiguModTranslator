@@ -1,0 +1,16 @@
+{
+  "provider": "OpenRouter",
+  "result": {
+    "translated": 1,
+    "failed": 0,
+    "total": 1,
+    "cancelled": false,
+    "concurrency": 1,
+    "batch_size": 48
+  },
+  "request_sizes": [
+    1
+  ],
+  "total_saved": 48,
+  "original_project_unchanged": true
+}

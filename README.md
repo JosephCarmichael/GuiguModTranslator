@@ -18,8 +18,11 @@ Progress is saved after each batch, and existing translations survive rescans.
 
 **Max parallel requests** sets the ceiling for simultaneous DeepSeek batches:
 **1, 4, 8, 16, 32, 64 or 128**, with **16** as the default. The app remembers your
-choice. Each request still groups up to 12 text entries with a 6,000-character
-batch target; a single longer entry stays intact. The progress display shows
+choice. **Entries per request** selects **12, 24, 48 or 96** entries; the default is
+**48**. The app retains a 6,000-character batch target and keeps each entry intact.
+If a response reaches the output limit, the app splits that batch into smaller
+batches and retries them. An individual entry that still exceeds the output limit
+is kept untranslated for review while the rest continues. The progress display shows
 completed translations and pending requests. Higher settings can improve speed
 when the service has capacity; they do not guarantee proportional speedups.
 
@@ -208,3 +211,15 @@ from the local game's assemblies; no proprietary game DLLs are redistributed.
 [Parallel-request implementation and validation](PARALLEL_TRANSLATION_VALIDATION.md) records the concurrency and live API checks.
 
 [Provider throttling diagnosis and recovery validation](PROVIDER_RECOVERY_VALIDATION.md) records the reproduced direct-DeepSeek HTTP 429 errors and the fix.
+
+Changing provider or batch size preserves the saved translations. The main button
+rescans source files, reuses matching translations, and sends only untranslated
+entries. The progress display includes the total already saved. Translation model
+metadata is also preserved on rescans.
+
+For example: `entry.py translate projects/2814696167 --include-review --concurrency 16 --batch-size 48`.
+Build an isolated update without paid test requests or replacing current app files
+with `build_release.py --offline --side-by-side`.
+
+[Larger batches and resume validation](BATCH_SIZE_VALIDATION.md) records the
+provider-switch checks and fixes for narration and percentage validation.

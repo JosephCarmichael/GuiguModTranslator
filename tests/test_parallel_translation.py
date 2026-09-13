@@ -71,7 +71,7 @@ class ParallelTests(unittest.TestCase):
                     save_project(p, folder)
 
                 with patch('translation.urllib.request.urlopen', http), patch('translation.save_project', checkpoint):
-                    result = translate(project, self.folder, concurrency=workers)
+                    result = translate(project, self.folder, batch_size=12, concurrency=workers)
                 self.assertEqual(peak, workers)
                 self.assertEqual(calls, workers * 2)
                 self.assertEqual(result['translated'], workers * 24)
@@ -97,7 +97,7 @@ class ParallelTests(unittest.TestCase):
             release_first.set()
 
         with patch('translation.request_batch', request), patch('translation.save_project', checkpoint):
-            result = translate(project, self.folder, concurrency=4)
+            result = translate(project, self.folder, batch_size=12, concurrency=4)
         self.assertEqual(result['translated'], 24)
         self.assertTrue(saved_second_first)
 
@@ -113,7 +113,7 @@ class ParallelTests(unittest.TestCase):
             return translated(texts)
 
         with patch('translation.request_batch', request):
-            result = translate(project, self.folder, concurrency=16, stop=cancel.is_set)
+            result = translate(project, self.folder, batch_size=12, concurrency=16, stop=cancel.is_set)
         self.assertTrue(result['cancelled'])
         self.assertEqual(len(called), 16)
         self.assertEqual(result['translated'], 192)
@@ -121,7 +121,7 @@ class ParallelTests(unittest.TestCase):
         self.assertEqual(sum(bool(u['translation']) for u in saved['units']), 192)
         # Resume skips all successful requests from the cancelled job.
         with patch('translation.request_batch', side_effect=lambda texts, *_: translated(texts)):
-            resumed = translate(saved, self.folder, concurrency=32)
+            resumed = translate(saved, self.folder, batch_size=12, concurrency=32)
         self.assertEqual(resumed['total'], (40 - 16) * 12)
 
     def test_service_failure_drains_successes_without_more_dispatch(self):
@@ -142,7 +142,7 @@ class ParallelTests(unittest.TestCase):
 
         with patch('translation.request_batch', request):
             with self.assertRaisesRegex(TranslationError, 'Allowance exhausted'):
-                translate(project, self.folder, concurrency=16)
+                translate(project, self.folder, batch_size=12, concurrency=16)
         self.assertEqual(len(called), 16)
         saved = read_json(self.folder / 'project.json')
         self.assertEqual(sum(bool(u['translation']) for u in saved['units']), 180)
@@ -150,14 +150,14 @@ class ParallelTests(unittest.TestCase):
 
     def test_cancel_before_dispatch_makes_no_calls(self):
         with patch('translation.request_batch') as request:
-            result = translate(project_with_batches(20), self.folder, concurrency=64, stop=lambda: True)
+            result = translate(project_with_batches(20), self.folder, batch_size=12, concurrency=64, stop=lambda: True)
         request.assert_not_called()
         self.assertTrue(result['cancelled'])
 
     def test_invalid_concurrency_is_rejected(self):
         for value in (0, -1, 3, 256, '16', True):
             with self.subTest(value=value), self.assertRaises(ValueError):
-                translate(project_with_batches(1), self.folder, concurrency=value)
+                translate(project_with_batches(1), self.folder, batch_size=12, concurrency=value)
 
     def test_shared_cooldown_is_cancellable(self):
         gate = RequestGate()

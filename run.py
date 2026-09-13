@@ -12,6 +12,7 @@ from pathlib import Path
 from extractor import APP, GAME, discover, extract, atomic_json, read_json, save_project, export_csv, import_csv, validate_translation
 from translation import DEEPSEEK_LABEL
 from app_config import CONCURRENCY_CHOICES, translation_concurrency, save_preferences
+from app_config import BATCH_SIZE_CHOICES, translation_batch_size
 
 
 def gui():
@@ -34,6 +35,7 @@ def gui():
             self.category = tk.StringVar(value='All extracted text')
             self.include_review = tk.BooleanVar(value=False)
             self.concurrency = tk.IntVar(value=translation_concurrency())
+            self.batch_size = tk.IntVar(value=translation_batch_size())
             self.status = tk.StringVar(value='Select a mod, then Extract Chinese text.')
             top = ttk.Frame(self, padding=10)
             top.pack(fill='x')
@@ -105,6 +107,10 @@ def gui():
             parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
             parallel.pack(side='left', padx=8)
             parallel.bind('<<ComboboxSelected>>', lambda _: save_preferences(concurrency=self.concurrency.get()))
+            ttk.Label(speed, text='Entries per request').pack(side='left', padx=(15, 0))
+            batches = ttk.Combobox(speed, textvariable=self.batch_size, values=BATCH_SIZE_CHOICES, state='readonly', width=6)
+            batches.pack(side='left', padx=8)
+            batches.bind('<<ComboboxSelected>>', lambda _: save_preferences(batch_size=self.batch_size.get()))
             ttk.Label(right, text='DeepSeek V4.1 Flash uses your saved API key. Extracted files stay in this project.').pack(anchor='w')
             ttk.Label(self, textvariable=self.status, padding=10, wraplength=1320).pack(fill='x')
             self.refresh()
@@ -249,7 +255,8 @@ def gui():
             from translation import translate
             project, folder, review = self.project, self.folder, self.include_review.get()
             concurrency = self.concurrency.get()
-            self.start(lambda: translate(project, folder, progress=self.progress, stop=self.stop.is_set, include_review=review, concurrency=concurrency))
+            batch_size = self.batch_size.get()
+            self.start(lambda: translate(project, folder, progress=self.progress, stop=self.stop.is_set, include_review=review, concurrency=concurrency, batch_size=batch_size))
 
         def export(self):
             if self.busy or not self.project: return
@@ -318,6 +325,8 @@ def main():
     trans.add_argument('--target', default='en')
     trans.add_argument('--glossary', type=Path)
     trans.add_argument('--include-review', action='store_true')
+    trans.add_argument('--batch-size', type=int, choices=BATCH_SIZE_CHOICES, default=None,
+                       help='Entries per request (saved preference, otherwise 48)')
     trans.add_argument('--concurrency', type=int, choices=CONCURRENCY_CHOICES, default=None,
                        help='Maximum simultaneous requests (saved preference, otherwise 16)')
     imp = sub.add_parser('import-csv')
@@ -353,7 +362,7 @@ def main():
         if args.command == 'translate':
             from translation import translate
             result = translate(project, folder, target=args.target, progress=print,
-                               glossary=args.glossary, include_review=args.include_review, concurrency=args.concurrency)
+                               glossary=args.glossary, include_review=args.include_review, concurrency=args.concurrency, batch_size=args.batch_size)
         else:
             result = import_csv(project, args.csv)
             save_project(project, folder)

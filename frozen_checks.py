@@ -61,7 +61,7 @@ def check(report_path, live=False):
                 {'id': str(i), 'source': f'灵力{i} {{0}}', 'translation': '', 'status': 'untranslated',
                  'category': 'player_text', 'occurrences': []} for i in range(192)]}
             with patch('translation.urllib.request.urlopen', fake_http):
-                result = translate(parallel, temp/'parallel-output', concurrency=16)
+                result = translate(parallel, temp/'parallel-output', batch_size=12, concurrency=16)
             assert result['translated'] == 192 and result['failed'] == 0
             assert all(u['translation'] == u['source'].replace('灵力', 'Spirit ') for u in read_json(temp/'parallel-output/project.json')['units'])
             report['checks'].append('16 simultaneous requests with correct saved responses (offline transport)')
@@ -80,6 +80,25 @@ def check(report_path, live=False):
             assert result['translated'] == 1 and len(attempts) == 5
             assert (temp/'recovery-output/request-errors.jsonl').is_file()
             report['checks'].append('Recovery after four HTTP 429 responses with saved diagnostics (offline transport)')
+            sizes = []
+            def batch_http(request, timeout):
+                texts = json.loads(json.loads(request.data)['messages'][1]['content'])
+                sizes.append(len(texts))
+                return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps([s.replace('灵力', 'Spirit ') for s in texts])}}]}).encode())
+            larger = {'mod': {'id': 'larger-batches'}, 'coverage': {'files': []},
+                      'units': [{**unit, 'translation': ''} for unit in parallel['units'][:96]]}
+            with patch('translation.urllib.request.urlopen', batch_http):
+                result = translate(larger, temp/'larger-output', concurrency=4, batch_size=48)
+            assert result['translated'] == 96 and sizes == [48, 48]
+            report['checks'].append('96 entries translated in two 48-entry requests (offline transport)')
+            from translation import protect, restore
+            from extractor import validate_translation
+            source = '<灵力> 30%闪避 <color=red>{0}</color>'
+            masked, tokens = protect(source)
+            assert '灵力' in masked
+            translated_text = restore(masked.replace('灵力', 'Spirit').replace('闪避', ' dodge'), tokens)
+            assert not validate_translation(source, translated_text)
+            report['checks'].append('Narration is translated while rich text, percentages and placeholders are preserved')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')

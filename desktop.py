@@ -8,6 +8,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from app_config import APP_DIR, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
+from app_config import BATCH_SIZE_CHOICES, translation_batch_size
 from extractor import APP, atomic_json, discover
 from mod_workflow import run_job
 
@@ -26,6 +27,7 @@ class App(tk.Tk):
         self.folder = None
         self.search = tk.StringVar()
         self.concurrency = tk.IntVar(value=translation_concurrency())
+        self.batch_size = tk.IntVar(value=translation_batch_size())
         self.status = tk.StringVar(value='Finding your mods…')
         style = ttk.Style(self)
         style.theme_use('clam')
@@ -71,6 +73,10 @@ class App(tk.Tk):
         self.parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
         self.parallel.pack(side='left', padx=10)
         self.parallel.bind('<<ComboboxSelected>>', self.change_concurrency)
+        ttk.Label(speed, text='Entries per request').pack(side='left', padx=(15, 0))
+        self.batch_choice = ttk.Combobox(speed, textvariable=self.batch_size, values=BATCH_SIZE_CHOICES, state='readonly', width=6)
+        self.batch_choice.pack(side='left', padx=10)
+        self.batch_choice.bind('<<ComboboxSelected>>', self.change_batch_size)
         self.action = ttk.Button(body, text='Translate and install', style='Action.TButton', command=self.translate)
         self.action.pack(fill='x', pady=(20, 12))
         self.action.state(['disabled'])
@@ -146,7 +152,9 @@ class App(tk.Tk):
         self.folder = APP / 'projects' / mod['id']
         self.busy = True
         concurrency = self.concurrency.get()
+        batch_size = self.batch_size.get()
         self.parallel.configure(state='disabled')
+        self.batch_choice.configure(state='disabled')
         self.stop.clear()
         self.action.configure(text='Cancel')
         self.result_button.pack_forget()
@@ -154,7 +162,7 @@ class App(tk.Tk):
         self.bar.start(14)
         def job():
             try:
-                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game, concurrency=concurrency)
+                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game, concurrency=concurrency, batch_size=batch_size)
                 self.events.put(('result', result))
             except InterruptedError:
                 self.events.put(('error', 'Cancelled. Previously saved translations are kept.'))
@@ -165,6 +173,7 @@ class App(tk.Tk):
     def finish(self):
         self.busy = False
         self.parallel.configure(state='readonly')
+        self.batch_choice.configure(state='readonly')
         self.bar.stop()
         self.bar.pack_forget()
         self.action.configure(text='Translate and install')
@@ -175,6 +184,12 @@ class App(tk.Tk):
             save_preferences(concurrency=self.concurrency.get())
         except OSError as exc:
             self.status.set('Could not save parallel request setting: ' + str(exc))
+
+    def change_batch_size(self, _=None):
+        try:
+            save_preferences(batch_size=self.batch_size.get())
+        except OSError as exc:
+            self.status.set('Could not save batch size: ' + str(exc))
 
     def poll(self):
         latest = None

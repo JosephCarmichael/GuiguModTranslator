@@ -1,0 +1,8 @@
+{
+  "provider": "OpenRouter",
+  "batch_size": 48,
+  "concurrency": 16,
+  "saved_translations": 3794,
+  "project_unchanged": true,
+  "credentials_logged": false
+}

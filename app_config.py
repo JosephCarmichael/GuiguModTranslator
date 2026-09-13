@@ -10,6 +10,8 @@ RESOURCE_DIR = Path(__file__).resolve().parent
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else RESOURCE_DIR
 CONCURRENCY_CHOICES = (1, 4, 8, 16, 32, 64, 128)
 DEFAULT_CONCURRENCY = 16
+BATCH_SIZE_CHOICES = (12, 24, 48, 96)
+DEFAULT_BATCH_SIZE = 48
 
 
 def preferences():
@@ -23,6 +25,11 @@ def preferences():
 def translation_concurrency():
     value = preferences().get('concurrency', DEFAULT_CONCURRENCY)
     return value if type(value) is int and value in CONCURRENCY_CHOICES else DEFAULT_CONCURRENCY
+
+
+def translation_batch_size():
+    value = preferences().get('batch_size', DEFAULT_BATCH_SIZE)
+    return value if type(value) is int and value in BATCH_SIZE_CHOICES else DEFAULT_BATCH_SIZE
 
 
 def save_preferences(**changes):

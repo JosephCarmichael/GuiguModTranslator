@@ -25,7 +25,15 @@ STRUCTURAL = re.compile(r'^(id|key|soleID|modNamespace|path|.*Path|.*Icon|icon|s
 MEDIA = {'.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tga', '.dds', '.gif', '.wav', '.mp3', '.ogg', '.webm', '.mp4', '.dat'}
 TEXT = {'.txt', '.json', '.csv', '.tsv', '.xml', '.yml', '.yaml', '.html', '.htm', '.lua', '.js', '.cs', '.ini', '.cfg', '.prefab', '.asset', '.unity'}
 SKIP_DIRS = {'.git', '.vs', 'obj', 'Library', 'Temp', 'Logs', 'Packages', 'ProjectSettings', '__pycache__'}
-TOKENS = re.compile(r'<[^<>\n]+>|\{\{[^{}]*\}\}|\{[^{}\n]+\}|\\[A-Za-z]+\[[^\]]*\]|\\[nrt]|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[sdfiu]|\[[A-Za-z_][\w.:=-]*\]')
+# Unity/TMP rich text and the game's short colour tags. Angle brackets also
+# surround ordinary narration: protect its delimiters, never hide its words.
+RICH_TAG_NAMES = ('b|i|u|s|r|g|color|size|material|quad|alpha|align|allcaps|br|'
+                  'cspace|font|font-weight|gradient|indent|line-height|line-indent|'
+                  'link|lowercase|margin|margin-left|margin-right|mark|mspace|nobr|'
+                  'noparse|page|pos|rotate|smallcaps|space|sprite|style|sub|sup|'
+                  'uppercase|voffset|width')
+RICH_TAG = r'(?i:</?(?:' + RICH_TAG_NAMES + r')(?=[\s=/>])[^<>\n]*>|<\#[0-9a-f]{3,8}>)'
+TOKENS = re.compile(RICH_TAG + r'|[<>]|\d+(?:\.\d+)?%(?![A-Za-z_])|\{\{[^{}]*\}\}|\{[^{}\n]+\}|\\[A-Za-z]+\[[^\]]*\]|\\[nrt]|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[sdfiu]|\[[A-Za-z_][\w.:=-]*\]')
 
 
 def decode(data: bytes) -> str:
@@ -430,6 +438,9 @@ def extract(mod, folder, progress=None, stop=None):
             previous = old_units.get(u['id'])
             if previous and previous['source'] == u['source'] and previous['translation']:
                 u['translation'], u['status'] = previous['translation'], previous['status']
+                for field in ('engine', 'model'):
+                    if field in previous:
+                        u[field] = previous[field]
         current = {u['id'] for u in project['units']}
         project['retired_units'] = old.get('retired_units', []) + [u for u in old['units'] if u['id'] not in current and u['translation']]
         atomic_json(Path(folder) / 'project.previous.json', old)

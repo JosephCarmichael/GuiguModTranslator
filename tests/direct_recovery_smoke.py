@@ -51,7 +51,7 @@ def main():
               'source_characters': sum(len(u['source']) for u in project['units'])}
     try:
         with patch('translation.urllib.request.urlopen', measured):
-            result = translation.translate(project, folder, concurrency=16, include_review=True,
+            result = translation.translate(project, folder, batch_size=12, concurrency=16, include_review=True,
                                            stop=lambda: time.monotonic()-start > 90)
         report.update(result=result, completed=not result['cancelled'])
     except Exception as exc:

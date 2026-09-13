@@ -3,7 +3,7 @@ from extractor import extract, validate_translation
 from translation import translate
 from installer import install, preflight
 
-def run_job(mod, folder, progress, stop, game=None, concurrency=None):
+def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size=None):
     from app_config import installed_game
     game = game or installed_game()
     if game is None:
@@ -13,7 +13,7 @@ def run_job(mod, folder, progress, stop, game=None, concurrency=None):
     project = extract(mod, folder, lambda _: progress('Reading the mod’s text…'), stop)
     if stop():
         return {'state': 'cancelled', 'count': 0, 'folder': str(folder)}
-    result = translate(project, folder, progress=progress, stop=stop, include_review=True, concurrency=concurrency)
+    result = translate(project, folder, progress=progress, stop=stop, include_review=True, concurrency=concurrency, batch_size=batch_size)
     eligible = [u for u in project['units'] if u['category'] != 'technical']
     count = sum(bool(u['translation']) for u in eligible)
     pending = sum(not u['translation'] or u['status'] == 'needs_review' for u in eligible)

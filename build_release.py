@@ -1,5 +1,6 @@
 """Build Windows-only self-contained executables and a minimal friends ZIP."""
 import hashlib
+import argparse
 import json
 import os
 import shutil
@@ -12,19 +13,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-def build(onefile):
+def build(onefile, output_dir=None):
     name = 'GuiguModTranslator' if onefile else 'GuiguModTranslatorPreview'
     mode = 'onefile' if onefile else 'onedir'
+    output_dir = Path(output_dir) if output_dir else ROOT/'dist'
     args = [sys.executable, '-X', 'utf8', '-m', 'PyInstaller', '--noconfirm', '--clean', '--'+mode,
             '--windowed', '--name', name, '--collect-all', 'UnityPy',
             '--add-data', str(ROOT/'bundled_service.json')+';.',
             '--add-data', str(ROOT/'runtime/GuiguModTranslation.dll')+';runtime',
             '--add-data', str(ROOT/'runtime/manifest.json')+';runtime',
             '--workpath', str(Path(tempfile.gettempdir())/('guigu-build-'+mode)),
-            '--distpath', str(ROOT/'dist'), '--specpath', str(ROOT/'build'), str(ROOT/'entry.py')]
+            '--distpath', str(output_dir), '--specpath', str(ROOT/'build'), str(ROOT/'entry.py')]
     with (ROOT/'projects'/('build-'+mode+'.log')).open('w',encoding='utf-8') as log:
         subprocess.run(args,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
-    return ROOT/'dist'/(name+'.exe') if onefile else ROOT/'dist'/name/(name+'.exe')
+    return output_dir/(name+'.exe') if onefile else output_dir/name/(name+'.exe')
 
 def verify(exe, name, live=False):
     # No Python environment, installation directories or saved local key are
@@ -51,7 +53,7 @@ def verify(exe, name, live=False):
             raise RuntimeError('Portable executable validation failed')
         print(name+': passed',flush=True)
 
-def package(exe):
+def package(exe, side_by_side=False):
     from PyInstaller.archive.readers import CArchiveReader
     contents=CArchiveReader(str(exe))
     embedded=json.loads(contents.extract('bundled_service.json').decode('utf-8'))
@@ -59,7 +61,8 @@ def package(exe):
     assert embedded==expected
     assert not any(name.replace('\\','/').endswith('/service.json') or name=='service.json'
                    or name.replace('\\','/').startswith('projects/') for name in contents.toc)
-    destination=ROOT/'release'/'GuiguModTranslator'
+    suffix = '-Batches-'+datetime.now().strftime('%Y%m%d-%H%M%S') if side_by_side else ''
+    destination=ROOT/'release'/('GuiguModTranslator'+suffix)
     destination.mkdir(parents=True,exist_ok=True)
     try:
         shutil.copy2(exe,destination/'GuiguModTranslator.exe')
@@ -69,7 +72,8 @@ def package(exe):
         destination.mkdir(parents=True,exist_ok=False)
         shutil.copy2(exe,destination/'GuiguModTranslator.exe')
         print('Previous release is running; updated app: '+str(destination),flush=True)
-    shutil.copy2(exe,ROOT/'GuiguModTranslator.exe')
+    if not side_by_side:
+        shutil.copy2(exe,ROOT/'GuiguModTranslator.exe')
     (destination/'Launch.bat').write_text('@echo off\r\nstart "" "%~dp0GuiguModTranslator.exe"\r\n',encoding='ascii')
     (destination/'START HERE.txt').write_text(
         'GUIGU MOD TRANSLATOR\n\n'
@@ -80,6 +84,9 @@ def package(exe):
         'Parallel requests controls simultaneous batches: 16 (default), 32, 64,\n'
         'or 128; smaller options are also available. The app remembers your choice.\n'
         'Speed depends on service capacity; rate limits are retried automatically.\n\n'
+        'Entries per request selects 12, 24, 48 (default), or 96 text entries.\n'
+        'The app retains a 6,000-character target and splits truncated batches.\n'
+        'Existing translations are reused when changing provider or batch size.\n\n'
         'If the provider is busy, the app reduces actual concurrency and shows a\n'
         'retry countdown. The selected number remains the maximum. Errors and\n'
         'retries are recorded in request-errors.jsonl inside the saved project.\n\n'
@@ -107,11 +114,11 @@ def package(exe):
     if python_license.exists():
         notices.append('\n\nPython\n'+python_license.read_text(encoding='utf-8',errors='replace'))
     (destination/'THIRD PARTY LICENSES.txt').write_text('Bundled runtime and dependency license texts\n'+''.join(notices),encoding='utf-8')
-    archive=ROOT/'release'/'GuiguModTranslator-Friends.zip'
+    archive=ROOT/'release'/('GuiguModTranslator-Friends'+suffix+'.zip')
     with zipfile.ZipFile(archive,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
         for filename in ('GuiguModTranslator.exe','Launch.bat','START HERE.txt','THIRD PARTY LICENSES.txt'):
             z.write(destination/filename,arcname='GuiguModTranslator/'+filename)
-    result={'zip':str(archive),'bytes':archive.stat().st_size,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
+    result={'zip':str(archive),'executable':str(destination/'GuiguModTranslator.exe'),'side_by_side':side_by_side,'bytes':archive.stat().st_size,'sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),
             'files':zipfile.ZipFile(archive).namelist(),'model':'deepseek/deepseek-v4.1-flash'}
     (ROOT/'projects/release-manifest.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     print('ZIP ready: '+str(archive),flush=True)
@@ -140,6 +147,10 @@ def verify_real_mod(exe):
         print('frozen-real-mod-check: passed',flush=True)
 
 if __name__=='__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--offline', action='store_true', help='Skip paid live API checks')
+    parser.add_argument('--side-by-side', action='store_true', help='Build new paths without replacing existing executables or ZIPs')
+    args = parser.parse_args()
     from app_config import installed_game
     game = installed_game()
     if game is None:
@@ -147,10 +158,12 @@ if __name__=='__main__':
     (ROOT/'projects').mkdir(exist_ok=True)
     subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
                     str(ROOT/'loader/Build.ps1'), '-GameRoot', str(game), '-Test'], check=True)
-    preview=build(False)
+    output = ROOT/'dist'/('batch-update-'+datetime.now().strftime('%Y%m%d-%H%M%S')) if args.side_by_side else ROOT/'dist'
+    preview=build(False, output)
     verify(preview,'frozen-onedir-check')
-    final=build(True)
+    final=build(True, output)
     verify(final,'frozen-onefile-check')
     verify_real_mod(final)
-    verify(final,'frozen-openrouter-live-check',live=True)
-    package(final)
+    if not args.offline:
+        verify(final,'frozen-openrouter-live-check',live=True)
+    package(final, side_by_side=args.side_by_side)

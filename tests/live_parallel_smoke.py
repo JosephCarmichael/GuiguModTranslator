@@ -44,7 +44,7 @@ def main():
             report = {'provider': profile['provider'], 'model': profile['model'], 'requested_concurrency': 16}
             try:
                 with patch('translation.urllib.request.urlopen', measured):
-                    result = translation.translate(project, Path(directory)/'project', concurrency=16)
+                    result = translation.translate(project, Path(directory)/'project', batch_size=12, concurrency=16)
                 report.update(result=result, passed=result['translated'] == 192 and result['failed'] == 0 and peak == 16)
             except Exception as exc:
                 report.update(passed=False, error=str(exc))
