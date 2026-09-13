@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -60,7 +61,14 @@ def package(exe):
                    or name.replace('\\','/').startswith('projects/') for name in contents.toc)
     destination=ROOT/'release'/'GuiguModTranslator'
     destination.mkdir(parents=True,exist_ok=True)
-    shutil.copy2(exe,destination/'GuiguModTranslator.exe')
+    try:
+        shutil.copy2(exe,destination/'GuiguModTranslator.exe')
+    except PermissionError:
+        # An open portable app must not be stopped to publish its replacement.
+        destination=ROOT/'release'/('GuiguModTranslator-Updated-'+datetime.now().strftime('%Y%m%d-%H%M%S'))
+        destination.mkdir(parents=True,exist_ok=False)
+        shutil.copy2(exe,destination/'GuiguModTranslator.exe')
+        print('Previous release is running; updated app: '+str(destination),flush=True)
     shutil.copy2(exe,ROOT/'GuiguModTranslator.exe')
     (destination/'Launch.bat').write_text('@echo off\r\nstart "" "%~dp0GuiguModTranslator.exe"\r\n',encoding='ascii')
     (destination/'START HERE.txt').write_text(
@@ -72,6 +80,9 @@ def package(exe):
         'Parallel requests controls simultaneous batches: 16 (default), 32, 64,\n'
         'or 128; smaller options are also available. The app remembers your choice.\n'
         'Speed depends on service capacity; rate limits are retried automatically.\n\n'
+        'If the provider is busy, the app reduces actual concurrency and shows a\n'
+        'retry countdown. The selected number remains the maximum. Errors and\n'
+        'retries are recorded in request-errors.jsonl inside the saved project.\n\n'
         'Python and all required packages are included. No Python installation,\n'
         'package downloads, API-key entry or administrator access is required.\n'
         'Requires 64-bit Windows 10/11, an internet connection and downloaded\n'

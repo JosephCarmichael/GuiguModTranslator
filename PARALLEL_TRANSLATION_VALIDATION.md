@@ -1,5 +1,8 @@
 # Parallel DeepSeek translation
 
+This records the initial parallel release. Its three-attempt retry policy is
+superseded by [adaptive provider recovery](PROVIDER_RECOVERY_VALIDATION.md).
+
 The main window and detailed editor now offer 1, 4, 8, 16, 32, 64 and 128 parallel
 requests, defaulting to 16. The setting is saved with the game-folder preference.
 The CLI accepts the same choices with `translate --concurrency N`.

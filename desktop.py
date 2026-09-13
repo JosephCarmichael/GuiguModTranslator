@@ -67,7 +67,7 @@ class App(tk.Tk):
         self.choose = ttk.Button(body, text='Choose game folder…', command=self.choose_game)
         speed = ttk.Frame(body)
         speed.pack(fill='x', pady=(12, 0))
-        ttk.Label(speed, text='Parallel requests').pack(side='left')
+        ttk.Label(speed, text='Max parallel requests').pack(side='left')
         self.parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
         self.parallel.pack(side='left', padx=10)
         self.parallel.bind('<<ComboboxSelected>>', self.change_concurrency)

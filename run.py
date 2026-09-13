@@ -101,7 +101,7 @@ def gui():
             ttk.Button(translation, text='Cancel job', command=self.stop.set).pack(side='right')
             speed = ttk.Frame(right)
             speed.pack(fill='x', pady=4)
-            ttk.Label(speed, text='Parallel requests').pack(side='left')
+            ttk.Label(speed, text='Max parallel requests').pack(side='left')
             parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
             parallel.pack(side='left', padx=8)
             parallel.bind('<<ComboboxSelected>>', lambda _: save_preferences(concurrency=self.concurrency.get()))

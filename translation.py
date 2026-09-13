@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import re
 import random
+import math
+import queue
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED, CancelledError
@@ -17,9 +19,29 @@ from extractor import TOKENS, CJK, save_project, validate_translation
 DEFAULT_ENGINE = 'deepseek'
 DEEPSEEK_LABEL = 'DeepSeek V4.1 Flash'
 DEEPSEEK_MODEL = 'deepseek-flash'
+MAX_REQUEST_ATTEMPTS = 8
 
 class TranslationError(Exception):
     pass
+
+
+class ProviderError(Exception):
+    def __init__(self, code, headers=None):
+        self.code = code
+        self.headers = headers
+
+
+def error_label(code):
+    return {408: 'request timeout', 429: 'rate limit', 500: 'server error',
+            502: 'upstream error', 503: 'provider unavailable', 504: 'gateway timeout',
+            'network': 'connection failure', 'response': 'incomplete response'}.get(code, 'request rejected')
+
+
+def provider_error_code(error):
+    try:
+        return int(error.get('code', 502))
+    except (AttributeError, ValueError, TypeError):
+        return 502
 
 
 def retry_delay(headers, attempt):
@@ -38,14 +60,22 @@ def retry_delay(headers, attempt):
                 seconds = -1
         if 0 <= seconds < float('inf'):
             return seconds
-    return 2 ** attempt + random.uniform(0, 1)
+    return min(60, 5 * 2 ** attempt) + random.uniform(0, 2)
 
 
 class RequestGate:
-    """Share provider cooldown across this job's workers, including new batches."""
-    def __init__(self):
+    """Adapt actual HTTP concurrency and stagger retries after provider failures."""
+    def __init__(self, ceiling=1):
         self.lock = threading.Lock()
         self.deadline = 0
+        self.ceiling = self.limit = ceiling
+        self.active = 0
+        self.next_start = 0
+        self.spacing = 0
+        self.last_reduction = float('-inf')
+        self.successes = 0
+        self.last_code = None
+        self.events = queue.SimpleQueue()
 
     def defer(self, seconds):
         with self.lock:
@@ -60,6 +90,59 @@ class RequestGate:
             if remaining <= 0:
                 return
             time.sleep(min(0.1, remaining))
+
+    def acquire(self, stop):
+        while True:
+            if stop():
+                raise InterruptedError('Translation cancelled')
+            with self.lock:
+                now = time.monotonic()
+                if now >= max(self.deadline, self.next_start) and self.active < self.limit:
+                    self.active += 1
+                    self.next_start = now + self.spacing
+                    return
+            time.sleep(0.05)
+
+    def release(self):
+        with self.lock:
+            self.active -= 1
+
+    def recover(self, code, delay, attempt):
+        self.defer(delay)
+        with self.lock:
+            now = time.monotonic()
+            # Treat a burst of errors from the same wave as one reduction.
+            if now - self.last_reduction >= 2:
+                self.limit = max(1, self.limit // 2)
+                self.last_reduction = now
+            self.spacing = max(self.spacing, 0.25)
+            self.successes = 0
+            self.last_code = code
+            limit = self.limit
+        self.events.put({'time_utc': datetime.now(timezone.utc).isoformat(), 'code': code,
+                         'reason': error_label(code), 'attempt': attempt, 'retry_in_seconds': round(delay, 2),
+                         'active_limit': limit, 'requested_limit': self.ceiling})
+
+    def succeeded(self):
+        with self.lock:
+            self.successes += 1
+            if self.successes >= 32 and time.monotonic() - self.last_reduction >= 30:
+                self.limit = min(self.ceiling, self.limit + 1)
+                self.successes = 0
+                if self.limit == self.ceiling:
+                    self.spacing = 0
+
+    def status(self):
+        with self.lock:
+            wait_seconds = max(0, math.ceil(self.deadline - time.monotonic()))
+            active, limit, code = self.active, self.limit, self.last_code
+        text = f'{active} active requests (using {limit} of {self.ceiling})'
+        if wait_seconds:
+            prefix = f'HTTP {code}' if isinstance(code, int) else str(code)
+            text += f' · {prefix}: {error_label(code)}; retrying in {wait_seconds}s'
+        elif limit < self.ceiling:
+            text += ' · Reduced concurrency while the provider recovers'
+        return text
 
 def protect(text):
     tokens = []
@@ -96,16 +179,16 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
                 headers={'Authorization': 'Bearer ' + profile['api_key'], 'Content-Type': 'application/json',
                          'X-Title': 'Guigu Mod Translator'})
     gate = gate or RequestGate()
-    for attempt in range(3):
+    for attempt in range(MAX_REQUEST_ATTEMPTS):
         if stop():
             raise InterruptedError('Translation cancelled')
-        gate.wait(stop)
-        delay = None
+        gate.acquire(stop)
+        code, headers = None, None
         try:
             with urllib.request.urlopen(request, timeout=60) as response:
                 result = json.loads(response.read().decode('utf-8'))
             if result.get('error'):
-                raise TranslationError('The translation service could not complete this request. Please retry.')
+                raise ProviderError(provider_error_code(result['error']))
             message = result['choices'][0]
             if message.get('finish_reason') == 'length':
                 raise TranslationError('The response was too long. Progress is saved; retry to continue.')
@@ -114,29 +197,31 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
             values = json.loads(content)
             if not isinstance(values, list) or len(values) != len(texts) or not all(isinstance(v, str) for v in values):
                 raise ValueError('Wrong response shape')
+            gate.succeeded()
             return values
         except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403):
-                raise TranslationError('The translation key was rejected. Please obtain an updated copy of the app.') from None
-            if exc.code == 402:
-                raise TranslationError('The shared translation allowance is exhausted. Progress is saved.') from None
-            if exc.code not in (408, 429, 500, 502, 503, 504):
-                raise TranslationError(f'The translation service rejected the request (HTTP {exc.code}). Progress is saved.') from None
-            reason = 'The translation service is busy. Progress is saved; please try again.'
-            delay = retry_delay(exc.headers, attempt)
-            if exc.code in (429, 503):
-                gate.defer(delay)
+            code, headers = exc.code, exc.headers
+            exc.close()
+        except ProviderError as exc:
+            code, headers = exc.code, exc.headers
         except (urllib.error.URLError, TimeoutError, OSError):
-            reason = 'Could not reach DeepSeek. Check your internet connection and try again.'
-        except (ValueError, KeyError, IndexError, TypeError):
-            reason = 'DeepSeek returned an incomplete response. Progress is saved; please retry.'
-        if attempt == 2:
-            raise TranslationError(reason)
-        deadline = time.monotonic() + (retry_delay(None, attempt) if delay is None else delay)
-        while time.monotonic() < deadline:
-            if stop():
-                raise InterruptedError('Translation cancelled')
-            time.sleep(0.1)
+            code = 'network'
+        except (ValueError, KeyError, IndexError, TypeError, AttributeError):
+            code = 'response'
+        finally:
+            gate.release()
+        if code in (401, 402, 403) or isinstance(code, int) and code not in (408, 429, 500, 502, 503, 504):
+            reason = {401: 'The API key was rejected.', 402: 'The account or key has insufficient credit.',
+                      403: 'The provider denied access or blocked this request.'}.get(code, 'The provider rejected this request.')
+            gate.events.put({'time_utc': datetime.now(timezone.utc).isoformat(), 'code': code, 'reason': reason, 'terminal': True})
+            raise TranslationError(f'{profile["provider"]} HTTP {code}: {reason} Progress is saved.')
+        delay = retry_delay(headers, attempt)
+        gate.recover(code, delay, attempt + 1)
+        if attempt == MAX_REQUEST_ATTEMPTS - 1:
+            code_text = f'HTTP {code}' if isinstance(code, int) else code
+            raise TranslationError(f'{profile["provider"]} {code_text}: {error_label(code)} persisted after '
+                                   f'{MAX_REQUEST_ATTEMPTS} attempts and automatic slowdown. Progress is saved; '
+                                   'see request-errors.jsonl in the saved project. Resume when the service recovers.')
 
 def translate(project, folder, target='en', progress=None, stop=None, glossary=None, include_review=False, concurrency=None):
     stop = stop or (lambda: False)
@@ -165,11 +250,25 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
         batches.append(batch)
     abort = threading.Event()
     stopped = lambda: abort.is_set() or stop()
-    gate = RequestGate()
+    gate = RequestGate(concurrency)
     first_error = None
     cancelled = False
     next_batch = 0
     pending = {}
+
+    def log_errors():
+        events = []
+        while True:
+            try:
+                events.append(gate.events.get_nowait())
+            except queue.Empty:
+                break
+        if events:
+            Path(folder).mkdir(parents=True, exist_ok=True)
+            with (Path(folder) / 'request-errors.jsonl').open('a', encoding='utf-8') as log:
+                for event in events:
+                    # Never record API keys, request text or raw provider payloads.
+                    log.write(json.dumps({'provider': profile.get('provider'), 'model': profile.get('model'), **event}) + '\n')
 
     def apply(batch, prepared, values):
         # Only the coordinator mutates project data or writes files. A future
@@ -207,7 +306,8 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
                 next_batch += 1
             if not pending:
                 break
-            progress(f'Translated {done:,} of {len(units):,} entries · {len(pending)} requests pending (limit {concurrency})'
+            log_errors()
+            progress(f'Translated {done:,} of {len(units):,} entries · {gate.status()}'
                      + (' · Stopping and saving…' if stopped() else ''))
             completed, _ = wait(pending, timeout=0.1, return_when=FIRST_COMPLETED)
             changed = False
@@ -235,5 +335,6 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     finally:
         abort.set()
         executor.shutdown(wait=True, cancel_futures=True)
+        log_errors()
         save_project(project, folder)
     return {'translated': done, 'failed': failed, 'total': len(units), 'cancelled': cancelled or stop(), 'concurrency': concurrency}

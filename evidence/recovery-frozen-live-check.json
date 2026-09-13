@@ -1,0 +1,17 @@
+{
+  "frozen": true,
+  "checks": [
+    "Bundled in-game loader and integrity manifest",
+    "Bundled Python and Tk GUI",
+    "Unity reader, native codecs and embedded type data",
+    "Encoded mod, YAML, Excel, JSON and CSV export",
+    "Bundled translation access found (key not logged)",
+    "16 simultaneous requests with correct saved responses (offline transport)",
+    "Recovery after four HTTP 429 responses with saved diagnostics (offline transport)",
+    "Live DeepSeek translation with formatting preserved"
+  ],
+  "provider": "OpenRouter",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "translation": "<r>Restore spiritual power</r> {0}",
+  "result": "passed"
+}

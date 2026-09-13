@@ -192,7 +192,7 @@ class ParallelTests(unittest.TestCase):
         self.assertTrue(28 <= retry_delay({'Retry-After': date}, 0) <= 30)
         for invalid in ('bad', '-1', 'nan', 'inf'):
             with patch('translation.random.uniform', return_value=0.5):
-                self.assertEqual(retry_delay({'Retry-After': invalid}, 2), 4.5)
+                self.assertEqual(retry_delay({'Retry-After': invalid}, 2), 20.5)
 
     def test_preferences_keep_game_and_request_limit(self):
         with patch('app_config.data_dir', return_value=self.folder):

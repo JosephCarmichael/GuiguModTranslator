@@ -65,6 +65,21 @@ def check(report_path, live=False):
             assert result['translated'] == 192 and result['failed'] == 0
             assert all(u['translation'] == u['source'].replace('灵力', 'Spirit ') for u in read_json(temp/'parallel-output/project.json')['units'])
             report['checks'].append('16 simultaneous requests with correct saved responses (offline transport)')
+            attempts = []
+            def busy_then_ready(request, timeout):
+                attempts.append(1)
+                if len(attempts) <= 4:
+                    import urllib.error
+                    raise urllib.error.HTTPError(request.full_url, 429, 'Busy', {'Retry-After': '0'}, None)
+                texts = json.loads(json.loads(request.data)['messages'][1]['content'])
+                return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps([s.replace('灵力', 'Spirit ') for s in texts])}}]}).encode())
+            recovery = {'mod': {'id': 'recovery'}, 'coverage': {'files': []},
+                        'units': [{**parallel['units'][0], 'translation': ''}]}
+            with patch('translation.urllib.request.urlopen', busy_then_ready):
+                result = translate(recovery, temp/'recovery-output', concurrency=16)
+            assert result['translated'] == 1 and len(attempts) == 5
+            assert (temp/'recovery-output/request-errors.jsonl').is_file()
+            report['checks'].append('Recovery after four HTTP 429 responses with saved diagnostics (offline transport)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')
