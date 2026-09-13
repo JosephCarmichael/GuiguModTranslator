@@ -1,0 +1,10 @@
+{
+  "result": "passed",
+  "mods": 11,
+  "checks": [
+    "mod discovery",
+    "selection",
+    "single button",
+    "simulated success display"
+  ]
+}

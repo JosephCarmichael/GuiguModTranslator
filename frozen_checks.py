@@ -18,6 +18,16 @@ def check(report_path, live=False):
         from extractor import extract, read_json, MAGIC, MOD_KEY
         from translation import translate
         from app_config import service_profile
+        from app_config import RESOURCE_DIR
+        import hashlib
+        from installer import LOADER
+        runtime = RESOURCE_DIR / 'runtime'
+        manifest = json.loads((runtime / 'manifest.json').read_text(encoding='utf-8'))
+        assert hashlib.sha256((runtime / LOADER).read_bytes()).hexdigest() == manifest['sha256']
+        dll = dnfile.dnPE(str(runtime / LOADER))
+        assert str(dll.net.mdtables.Assembly.rows[0].Name) == 'GuiguModTranslation'
+        dll.close()
+        report['checks'].append('Bundled in-game loader and integrity manifest')
         root = tk.Tk(); root.withdraw(); root.update(); root.destroy()
         report['checks'].append('Bundled Python and Tk GUI')
         node = get_typetree_node(49, UnityVersion.from_str('2020.3.9f1'))

@@ -1,0 +1,9 @@
+{
+  "state": "installed",
+  "count": 909,
+  "skipped": 1142,
+  "mod": "2859071194",
+  "restart_required": true,
+  "store": "C:\\CoopFixtures\\translator-runtime\\UserData\\GuiguModTranslator\\installed.json",
+  "loader": "C:\\CoopFixtures\\translator-runtime\\Mods\\GuiguModTranslation.dll"
+}

@@ -1,0 +1,36 @@
+{
+  "results": [
+    {
+      "source": "道友果然是爽快之人。",
+      "expected": "Daoist friends are indeed cheerful people.",
+      "ugui": "Daoist friends are indeed cheerful people.",
+      "tmp": "Daoist friends are indeed cheerful people.",
+      "tmp_settext": "Daoist friends are indeed cheerful people.",
+      "passed": true
+    },
+    {
+      "source": "你是……",
+      "expected": "You are......",
+      "ugui": "You are......",
+      "tmp": "You are......",
+      "tmp_settext": "You are......",
+      "passed": true
+    },
+    {
+      "source": "情报",
+      "expected": "Information",
+      "ugui": "Information",
+      "tmp": "Information",
+      "tmp_settext": "Information",
+      "passed": true
+    },
+    {
+      "source": "恢复25灵力",
+      "expected": "Restore 25 spirit",
+      "ugui": "Restore 25 spirit",
+      "tmp": "Restore 25 spirit",
+      "tmp_settext": "Restore 25 spirit",
+      "passed": true
+    }
+  ]
+}

@@ -2,6 +2,9 @@
 
 Validated on 13 September 2026 against this Steam installation.
 
+This records the original extraction audit. For the added runtime installer and
+in-game checks, see [INSTALLATION_VALIDATION.md](INSTALLATION_VALIDATION.md).
+
 | Mod ID | Mod | Unique Chinese entries | Reused English |
 |---|---|---:|---:|
 | 2814696167 | [无邪]万古神话 | 11,535 | 14 |
@@ -22,7 +25,7 @@ Field classification: **18,401 player-text entries**, **3,303 review candidates*
 
 ## Validation
 
-- 13 automated workflow tests pass on Windows Python 3.13, including the actual translation pipeline with mocked DeepSeek transport to verify the fixed endpoint/model and placeholder preservation without making paid test requests.
+- 16 automated workflow tests pass on Windows Python 3.13, including the standalone translation client with mocked DeepSeek transport, rejected formatting changes, saved progress after service failure, and incomplete-work reporting.
 - Windows GUI smoke test passes: startup, discovery, project loading, search and source selection.
 - Every one of 39,730 Chinese string values in decoded JSON/cache sources was found in its mod project. This checks stored string coverage, not whether every game UI path is covered.
 - All recorded source-file hashes matched after extraction. No input file was changed by this tool.

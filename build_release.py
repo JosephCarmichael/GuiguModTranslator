@@ -17,6 +17,8 @@ def build(onefile):
     args = [sys.executable, '-X', 'utf8', '-m', 'PyInstaller', '--noconfirm', '--clean', '--'+mode,
             '--windowed', '--name', name, '--collect-all', 'UnityPy',
             '--add-data', str(ROOT/'bundled_service.json')+';.',
+            '--add-data', str(ROOT/'runtime/GuiguModTranslation.dll')+';runtime',
+            '--add-data', str(ROOT/'runtime/manifest.json')+';runtime',
             '--workpath', str(Path(tempfile.gettempdir())/('guigu-build-'+mode)),
             '--distpath', str(ROOT/'dist'), '--specpath', str(ROOT/'build'), str(ROOT/'entry.py')]
     with (ROOT/'projects'/('build-'+mode+'.log')).open('w',encoding='utf-8') as log:
@@ -59,20 +61,24 @@ def package(exe):
     destination=ROOT/'release'/'GuiguModTranslator'
     destination.mkdir(parents=True,exist_ok=True)
     shutil.copy2(exe,destination/'GuiguModTranslator.exe')
+    shutil.copy2(exe,ROOT/'GuiguModTranslator.exe')
     (destination/'Launch.bat').write_text('@echo off\r\nstart "" "%~dp0GuiguModTranslator.exe"\r\n',encoding='ascii')
     (destination/'START HERE.txt').write_text(
         'GUIGU MOD TRANSLATOR\n\n'
         '1. Extract this ZIP to a folder.\n'
         '2. Double-click GuiguModTranslator.exe (or Launch.bat).\n'
-        '3. Select a mod and click Translate with DeepSeek.\n\n'
+        '3. Select a mod and click Translate and install.\n'
+        '4. Restart the game to use the translations.\n\n'
         'Python and all required packages are included. No Python installation,\n'
         'package downloads, API-key entry or administrator access is required.\n'
         'Requires 64-bit Windows 10/11, an internet connection and downloaded\n'
         'Tale of Immortal mods. Translation access is already configured.\n\n'
         'The app finds Steam automatically. If it cannot find the game, use\n'
         'Options > Choose game folder and select the folder with guigubahuang.exe.\n\n'
-        'Success means translation files have been created. This app does not\n'
-        'install translations in-game. Use Open translations to find the files.\n'
+        'The app installs its text loader and translated dictionaries into the game.\n'
+        'Options > Install saved translations applies work you already translated.\n'
+        'Options > Remove selected mod’s translations reverses the installation.\n'
+        'Requires the game’s bundled MelonLoader 0.5.x. Start the game once first.\n'
         'The detailed editor is under Options. Progress is saved automatically.\n'
         'If the shared allowance runs out, saved work remains available.\n\n'
         'Saved files: %LOCALAPPDATA%\\GuiguModTranslator\\projects\n',encoding='utf-8')
@@ -120,6 +126,13 @@ def verify_real_mod(exe):
         print('frozen-real-mod-check: passed',flush=True)
 
 if __name__=='__main__':
+    from app_config import installed_game
+    game = installed_game()
+    if game is None:
+        raise RuntimeError('A local game installation is required to build the runtime loader.')
+    (ROOT/'projects').mkdir(exist_ok=True)
+    subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                    str(ROOT/'loader/Build.ps1'), '-GameRoot', str(game), '-Test'], check=True)
     preview=build(False)
     verify(preview,'frozen-onedir-check')
     final=build(True)

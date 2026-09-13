@@ -197,8 +197,8 @@ class WorkflowTests(unittest.TestCase):
         from unittest.mock import patch
         from mod_workflow import run_job
         self.write('items.json', {'desc':'灵力'})
-        with patch('translation.service_profile', return_value={}), patch('translation.request_batch', return_value=['灵力']):
-            result = run_job(self.info, self.output, lambda _:None, lambda:False)
+        with patch('mod_workflow.preflight'), patch('translation.service_profile', return_value={}), patch('translation.request_batch', return_value=['灵力']):
+            result = run_job(self.info, self.output, lambda _:None, lambda:False, game=self.base)
         self.assertEqual(result['state'], 'partial')
         self.assertEqual(result['pending'], 1)
 

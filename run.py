@@ -88,6 +88,7 @@ def gui():
             ttk.Button(actions, text='Save edit', command=self.save_edit).pack(side='left')
             ttk.Button(actions, text='Export CSV…', command=self.export).pack(side='left', padx=5)
             ttk.Button(actions, text='Import translated CSV…', command=self.import_translations).pack(side='left')
+            ttk.Button(actions, text='Install in game', command=self.install_in_game).pack(side='left', padx=5)
             translation = ttk.Frame(right)
             translation.pack(fill='x', pady=5)
             self.provider_label = ttk.Label(translation, text=DEEPSEEK_LABEL)
@@ -248,6 +249,15 @@ def gui():
                 export_csv(self.project, path)
                 self.status.set('Exported ' + path)
 
+        def install_in_game(self):
+            if self.busy or not self.project: return
+            from installer import install
+            try:
+                result = install(self.project, Path(self.game.get()))
+                self.status.set(f'Installed {result["count"]:,} saved translations. Restart the game to use them.')
+            except Exception as exc:
+                messagebox.showerror('Installation failed', str(exc))
+
         def import_translations(self):
             if self.busy or not self.project: return
             path = filedialog.askopenfilename(filetypes=[('CSV translation file', '*.csv')])
@@ -302,6 +312,11 @@ def main():
     imp = sub.add_parser('import-csv')
     imp.add_argument('project', type=Path)
     imp.add_argument('csv', type=Path)
+    inst = sub.add_parser('install', help='Install a saved project into the game')
+    inst.add_argument('project', type=Path)
+    remove = sub.add_parser('uninstall', help='Remove one mod’s installed translations')
+    remove.add_argument('mod')
+    sub.add_parser('installed', help='List installed translations')
     args = parser.parse_args()
     if args.command is None:
         if args.advanced:
@@ -309,6 +324,17 @@ def main():
         else:
             from desktop import App
             App().mainloop()
+        return
+    if args.command in ('install', 'uninstall', 'installed'):
+        from installer import install, uninstall, installation_status
+        if args.command == 'install':
+            folder = args.project if args.project.is_dir() else args.project.parent
+            result = install(read_json(folder / 'project.json'), args.game)
+        elif args.command == 'uninstall':
+            result = uninstall(args.mod, args.game)
+        else:
+            result = installation_status(args.game)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return
     if args.command in ('translate', 'import-csv'):
         folder = args.project if args.project.is_dir() else args.project.parent

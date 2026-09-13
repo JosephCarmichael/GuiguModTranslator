@@ -1,8 +1,14 @@
 """The single-button mod extraction and translation workflow."""
-from extractor import extract
+from extractor import extract, validate_translation
 from translation import translate
+from installer import install, preflight
 
-def run_job(mod, folder, progress, stop):
+def run_job(mod, folder, progress, stop, game=None):
+    from app_config import installed_game
+    game = game or installed_game()
+    if game is None:
+        raise ValueError('Choose your game folder before translating.')
+    preflight(game)
     progress('Reading the mod’s text…')
     project = extract(mod, folder, lambda _: progress('Reading the mod’s text…'), stop)
     if stop():
@@ -12,7 +18,7 @@ def run_job(mod, folder, progress, stop):
     count = sum(bool(u['translation']) for u in eligible)
     pending = sum(not u['translation'] or u['status'] == 'needs_review' for u in eligible)
     gaps = any(f['status'] in ('unreadable', 'partial') for f in project['coverage']['files'])
-    if result['cancelled']:
+    if result['cancelled'] or stop():
         state = 'cancelled'
     elif not eligible:
         state = 'empty'
@@ -20,4 +26,11 @@ def run_job(mod, folder, progress, stop):
         state = 'partial'
     else:
         state = 'success'
-    return {'state': state, 'count': count, 'pending': pending, 'coverage_gaps': gaps, 'folder': str(folder)}
+    installed = None
+    ready = any(u['translation'] and u['status'] != 'needs_review' and
+                not validate_translation(u['source'], u['translation']) for u in eligible)
+    if state not in ('cancelled', 'empty') and ready:
+        progress('Installing translations into the game…')
+        installed = install(project, game)
+    return {'state': state, 'count': count, 'pending': pending, 'coverage_gaps': gaps,
+            'installation': installed, 'folder': str(folder)}

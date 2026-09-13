@@ -8,3 +8,5 @@ build/
 dist/
 release/
 *.spec
+runtime/
+*.exe

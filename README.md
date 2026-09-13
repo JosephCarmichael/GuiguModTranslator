@@ -1,6 +1,6 @@
 # Guigu Mod Translator
 
-**Choose a mod → Translate with DeepSeek → translation files ready.**
+**Choose a mod → Translate and install → restart the game and play.**
 
 Double-click `GuiguModTranslator.exe`. The Windows executable includes Python,
 Tk, the mod readers and all required packages. Your friends do not need Python,
@@ -12,13 +12,28 @@ They extract it and open `GuiguModTranslator.exe` or `Launch.bat`. It requires
 The included shared access calls DeepSeek V4.1 Flash through OpenRouter.
 
 The app detects Steam libraries automatically. If needed, use **Options →
-Choose game folder** once. Select a mod, then press **Translate with DeepSeek**.
+Choose game folder** once. Select a mod, then press **Translate and install**.
 Extraction and translation run together. The same button cancels a running job.
 Progress is saved after each batch, and existing translations survive rescans.
 
-**Success means translation files are ready; this app does not install them
-in-game.** Incomplete work is labelled as needing review, not success. When a
-connection fails or the shared allowance runs out, previous progress stays saved.
+The app installs `Mods/GuiguModTranslation.dll` and the selected mod's validated
+translations into `UserData/GuiguModTranslator/installed.json`. **Restart the game
+after installation, updates or removal.** Your next game process loads the
+translations and replaces matching displayed Chinese text with English.
+Incomplete translations remain labelled as needing review; valid entries can
+still be installed. Connection failures preserve saved translation progress.
+
+Already translated a mod? Select it and choose **Options → Install saved
+translations**. This also applies edits made in the translation editor without
+another paid translation request. **Options → Remove selected mod’s translations**
+removes that mod's installed dictionary while keeping your saved project.
+
+The runtime targets the game's bundled **MelonLoader 0.5.x / Unhollower** runtime.
+Launch the game once before installation so its managed assemblies exist. The
+installer checks dependencies and the bundled loader's integrity before starting
+translation. It reports missing or incompatible dependencies instead of claiming
+installation succeeded. If Windows has locked the loader, close the game and
+use **Install saved translations** again.
 
 The detailed editor, CSV import/export and coverage report are under **Options →
 Translation editor**. They are kept off the main translation screen.
@@ -58,10 +73,30 @@ software to avoid automatic formula or number conversion.
 
 ## Coverage limits
 
-**This is an extractor and translation editor, not an in-game translation
-loader.** `dictionary.json` is an exact-source translation dictionary for
-later integration. Writing it does not make the game load translations.
-An in-game loader is not included. No game/mod/save files are patched.
+The included runtime translates Unity UI `Text`, TextMeshPro text properties
+and string `SetText` overloads, and `TextMesh`. A periodic scan also handles
+active prefab labels and text set through other paths. Matching is exact; common
+numbered `{0}` templates also match after the game substitutes values. Rich-text
+tags and placeholders remain intact.
+
+Translations affect display components globally: identical Chinese text may also
+appear in another mod or the base game. Conflicting translations across installed
+mods are rejected; ambiguous formatted matches remain unchanged. Translations
+remain active until removed in this app, even if a source mod is disabled in the
+game. Dictionaries whose source path no longer exists are skipped at startup.
+Custom renderers, text baked into images, and dynamically combined text without
+a matching template may remain Chinese. `%s`, named placeholders, and advanced
+format specifiers only work when the exact source reaches the display hook.
+No claim is made that every screen of every mod has been verified.
+
+The installer writes only its own loader and dictionary files. Original mod
+bundles, compiled DLLs, game binaries and saves remain unchanged. Updates and
+removals save the previous dictionary under `UserData/GuiguModTranslator/backups`.
+The shared runtime DLL remains installed after removing a dictionary and is inert
+when no translations remain. Projects and translation exports stay separate from
+the installed dictionaries. Installing changes takes an app-specific lock;
+a crashed installation may leave `installed.lock`, which can be removed once all
+translator processes have closed.
 
 No static extractor can promise every player-visible string: text painted
 into images, speech without subtitles, dynamically assembled text, obfuscated
@@ -87,20 +122,29 @@ game strings referenced by a mod are outside that mod's extraction.
 - `dictionary.json`: available translations keyed by exact source text.
 - `coverage.json`: per-file hashes, statuses, asset object counts and gaps.
 
+`UserData/GuiguModTranslator/runtime-status.json` in the game folder reports the
+running loader's version, process ID, loaded dictionary hash, entry and replacement
+counts, installed hooks and errors. It is refreshed while the game runs; compare
+the process ID with the current game process before treating it as live evidence.
+
 `projects/inventory.json` records downloaded Workshop and local loader mods.
 `AUDIT.md` records the extraction/validation performed on this installation.
 
 ## Developer commands
 
 The release has no Python requirement. To work on source code, use Windows Python
-3.13, install `requirements.txt`, then run `entry.py`. Build with PyInstaller:
+3.13, install `requirements.txt`, then run `entry.py`. The loader build also
+requires the .NET SDK and .NET Framework 4.7.2 targeting pack. Set up the ignored
+`bundled_service.json` with your authorized shared `api_key` before packaging;
+`service.json` is for personal local access. Neither credentials nor binaries
+are stored in the source repository. Build with PyInstaller:
 
 ```bat
 .venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
 .venv\Scripts\python.exe -X utf8 build_release.py
 ```
 
-The build first verifies a folder bundle, then creates and tests the single-file
+The build compiles and tests the runtime loader, then verifies a folder bundle, then creates and tests the single-file
 executable in an isolated folder, and finally assembles the friends ZIP. Source
 CLI commands remain available through `python entry.py`; the main window opens
 with no arguments, and `--advanced` opens the detailed editor.
@@ -119,3 +163,19 @@ batching, retries and formatting protection.
 
 DeepSeek's [V4.1 Flash release announcement](https://www.deepseek.com/en/news/deepseek-v4-1-flash/)
 specifies `deepseek-flash` as the API model name.
+
+## Installation CLI
+
+```bat
+.venv\Scripts\python.exe entry.py --game "C:\path\to\game" install projects\2859071194
+.venv\Scripts\python.exe entry.py --game "C:\path\to\game" installed
+.venv\Scripts\python.exe entry.py --game "C:\path\to\game" uninstall 2859071194
+```
+
+The `translate` CLI command still saves a project; run `install` afterwards.
+The main desktop button runs both steps. Installation conflicts are resolved in
+the editor or by removing the other installed dictionary, then retrying installation.
+
+The runtime uses [Harmony prefix patches](https://harmony.pardeike.net/v2/articles/patching-injections.html)
+to substitute the text argument before Unity displays it. Build references come
+from the local game's assemblies; no proprietary game DLLs are redistributed.

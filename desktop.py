@@ -43,12 +43,14 @@ class App(tk.Tk):
         options.add_separator()
         options.add_command(label='Translation editor…', command=self.editor)
         options.add_command(label='Open saved translations', command=self.open_folder)
+        options.add_command(label='Install saved translations', command=self.install_saved)
+        options.add_command(label='Remove selected mod’s translations', command=self.remove_installed)
         menu.add_cascade(label='Options', menu=options)
         self.configure(menu=menu)
         body = ttk.Frame(self, padding=(30, 25))
         body.pack(fill='both', expand=True)
         ttk.Label(body, text='Translate your mods', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(body, text='Choose a mod. DeepSeek V4.1 Flash takes care of the text.', style='Sub.TLabel').pack(anchor='w', pady=(6, 20))
+        ttk.Label(body, text='Choose a mod. Translate and install it for your next game launch.', style='Sub.TLabel').pack(anchor='w', pady=(6, 20))
         ttk.Label(body, text='Search mods', style='Sub.TLabel').pack(anchor='w')
         ttk.Entry(body, textvariable=self.search, font=('Segoe UI', 11)).pack(fill='x', pady=(5, 12))
         self.search.trace_add('write', lambda *_: self.render())
@@ -62,13 +64,13 @@ class App(tk.Tk):
         scroll.pack(side='right', fill='y')
         self.list.bind('<<TreeviewSelect>>', self.selected)
         self.choose = ttk.Button(body, text='Choose game folder…', command=self.choose_game)
-        self.action = ttk.Button(body, text='Translate with DeepSeek', style='Action.TButton', command=self.translate)
+        self.action = ttk.Button(body, text='Translate and install', style='Action.TButton', command=self.translate)
         self.action.pack(fill='x', pady=(20, 12))
         self.action.state(['disabled'])
         self.bar = ttk.Progressbar(body, mode='indeterminate')
         ttk.Label(body, textvariable=self.status, wraplength=720).pack(anchor='w', pady=(5, 8))
         self.result_button = ttk.Button(body, text='Open translations', command=self.open_folder)
-        ttk.Label(body, text='Creates translation files. Does not install translations in-game.', style='Sub.TLabel').pack(anchor='w', pady=(6, 0))
+        ttk.Label(body, text='Installs in-game text translations. Restart the game after changes.', style='Sub.TLabel').pack(anchor='w', pady=(6, 0))
         self.protocol('WM_DELETE_WINDOW', self.close)
         self.after(100, self.poll)
         self.after(10, self.refresh)
@@ -143,7 +145,7 @@ class App(tk.Tk):
         self.bar.start(14)
         def job():
             try:
-                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set)
+                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game)
                 self.events.put(('result', result))
             except InterruptedError:
                 self.events.put(('error', 'Cancelled. Previously saved translations are kept.'))
@@ -155,7 +157,7 @@ class App(tk.Tk):
         self.busy = False
         self.bar.stop()
         self.bar.pack_forget()
-        self.action.configure(text='Translate with DeepSeek')
+        self.action.configure(text='Translate and install')
         self.action.state(['!disabled'] if self.list.selection() else ['disabled'])
 
     def poll(self):
@@ -181,13 +183,21 @@ class App(tk.Tk):
                 else:
                     state = value['state']
                     if state == 'success':
-                        self.status.set(f'Success — translation files ready. {value["count"]:,} entries saved.')
+                        installed = value.get('installation')
+                        if installed:
+                            self.status.set(f'Installed {installed["count"]:,} translations. Restart the game to use them.')
+                        else:
+                            self.status.set('Translations saved, but installation did not complete. Use Options → Install saved translations.')
                     elif state == 'empty':
                         self.status.set('No readable Chinese text was found. You can check the coverage report in the saved files.')
                     elif state == 'cancelled':
                         self.status.set('Cancelled. Saved progress will be reused next time.')
                     else:
-                        self.status.set(f'{value["count"]:,} translations saved. Some text still needs review; see the saved files.')
+                        installed = value.get('installation')
+                        if installed:
+                            self.status.set(f'Installed {installed["count"]:,} translations. Some text still needs review. Restart the game to use the installed text.')
+                        else:
+                            self.status.set(f'{value["count"]:,} translations saved. Some text still needs review; see the saved files.')
                     self.result_button.pack(before=self.action, pady=(10, 0))
         if latest:
             self.status.set(latest)
@@ -206,6 +216,35 @@ class App(tk.Tk):
             return
         args = [sys.executable, '--advanced'] if getattr(sys, 'frozen', False) else [sys.executable, str(APP_DIR / 'entry.py'), '--advanced']
         subprocess.Popen(args)
+
+    def install_saved(self):
+        if self.busy or not self.list.selection():
+            return
+        from extractor import read_json
+        from installer import install
+        selection = self.list.selection()[0]
+        folder = APP / 'projects' / selection
+        try:
+            project = read_json(folder / 'project.json')
+            # Discovery is authoritative if the game or Workshop library moved.
+            project['mod'] = self.mods[selection]
+            result = install(project, self.game)
+            self.status.set(f'Installed {result["count"]:,} translations. Restart the game to use them.')
+        except FileNotFoundError:
+            self.status.set('No saved translation project yet. Click Translate and install first.')
+        except Exception as exc:
+            self.status.set('Installation failed: ' + str(exc))
+
+    def remove_installed(self):
+        if self.busy or not self.list.selection():
+            return
+        from installer import uninstall
+        try:
+            result = uninstall(self.list.selection()[0], self.game)
+            self.status.set('Translations removed. Restart the game. Saved translations are kept.'
+                            if result['state'] == 'removed' else 'This mod has no installed translations.')
+        except Exception as exc:
+            self.status.set('Could not remove translations: ' + str(exc))
 
     def close(self):
         if self.busy:
