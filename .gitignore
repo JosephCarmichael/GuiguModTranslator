@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+projects/
+*.pyc
+service.json
+bundled_service.json
+build/
+dist/
+release/
+*.spec
