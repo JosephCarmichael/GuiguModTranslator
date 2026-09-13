@@ -420,6 +420,9 @@ def validate_translation(source, translation):
 
 def save_project(project, folder):
     folder = Path(folder)
+    if 'destiny_fields' in project:
+        from destinies import destiny_report
+        atomic_json(folder / 'untranslated-destinies.json', destiny_report(project))
     atomic_json(folder / 'project.json', project)
     atomic_json(folder / 'coverage.json', project['coverage'])
     export_csv(project, folder / 'strings.csv')

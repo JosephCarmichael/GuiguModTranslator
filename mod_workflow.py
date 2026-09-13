@@ -10,7 +10,9 @@ def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size
         raise ValueError('Choose your game folder before translating.')
     preflight(game)
     progress('Reading the mod’s text…')
-    project = extract(mod, folder, lambda _: progress('Reading the mod’s text…'), stop)
+    from destinies import PROJECT_ID, scan_destinies
+    project = (scan_destinies(game, folder, progress, stop) if mod['id'] == PROJECT_ID else
+               extract(mod, folder, lambda _: progress('Reading the mod’s text…'), stop))
     if stop():
         return {'state': 'cancelled', 'count': 0, 'folder': str(folder)}
     result = translate(project, folder, progress=progress, stop=stop, include_review=True, concurrency=concurrency, batch_size=batch_size)
@@ -18,6 +20,8 @@ def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size
     count = sum(bool(u['translation']) for u in eligible)
     pending = sum(not u['translation'] or u['status'] == 'needs_review' for u in eligible)
     gaps = any(f['status'] in ('unreadable', 'partial') for f in project['coverage']['files'])
+    if mod['id'] == PROJECT_ID:
+        gaps = gaps or bool(project['coverage']['destiny_gaps']) or not project['coverage']['runtime_inventory'] or bool(project['coverage'].get('runtime_warnings'))
     if result['cancelled'] or stop():
         state = 'cancelled'
     elif not eligible:

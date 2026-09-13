@@ -1,0 +1,15 @@
+{
+  "verified_at": "2026-09-13",
+  "model": "deepseek/deepseek-v4.1-flash",
+  "model_source": "https://openrouter.ai/api/v1/models",
+  "input_usd_per_million": "0.30",
+  "output_usd_per_million": "1.20",
+  "rate_basis": "peak overrides; uncached input",
+  "fx_source": "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml",
+  "fx_date": "2026-09-11",
+  "usd_per_eur": "1.1592",
+  "gbp_per_eur": "0.85815",
+  "estimate_allowance": "30%",
+  "friends_limit_pence": "0.5",
+  "friends_limit_gbp": "0.005"
+}

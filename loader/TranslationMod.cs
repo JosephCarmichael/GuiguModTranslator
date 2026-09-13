@@ -12,12 +12,12 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(GuiguModTranslation.TranslationMod), "Guigu Mod Translation", "1.1.0", "GuiguModTranslator")]
+[assembly: MelonInfo(typeof(GuiguModTranslation.TranslationMod), "Guigu Mod Translation", "1.2.1", "GuiguModTranslator")]
 [assembly: MelonGame(null, null)]
 
 namespace GuiguModTranslation
 {
-    public sealed class TranslationMod : MelonMod
+    public sealed partial class TranslationMod : MelonMod
     {
         private static TranslationCatalog catalog = new TranslationCatalog(new Dictionary<string, string>());
         private static long hits;
@@ -56,6 +56,7 @@ namespace GuiguModTranslation
                 // TMP SetText can bypass the text property, including its numeric formatting overloads.
                 foreach (var method in typeof(TMP_Text).GetMethods(BindingFlags.Public | BindingFlags.Instance))
                     if (method.Name == "SetText" && method.GetParameters().Length > 0 && method.GetParameters()[0].ParameterType == typeof(string)) Patch(method);
+                PatchDestinyLocalization();
             }
             catch (Exception error) { errors.Add(error.ToString()); LoggerInstance.Error(error.ToString()); }
             WriteStatus();
@@ -73,7 +74,7 @@ namespace GuiguModTranslation
             catch (Exception error) { errors.Add(method.Name + ": " + error.Message); }
         }
 
-        public static void BeforeText(ref string __0)
+        public static void BeforeText(Component __instance, ref string __0)
         {
             // A display hook must never break the original UI update.
             try
@@ -81,6 +82,8 @@ namespace GuiguModTranslation
                 lock (Gate)
                 {
                     string translated = catalog.Translate(__0);
+                    if (creatorOpen && TranslationCatalog.HasChinese(translated) && __0.Length <= 8192 && observedUntranslated.Count < 5000 && IsDestinyDisplay(__instance))
+                        observedUntranslated.Add(__0);
                     if (translated != __0) { __0 = translated; hits++; }
                 }
             }
@@ -89,6 +92,7 @@ namespace GuiguModTranslation
 
         public override void OnUpdate()
         {
+            UpdateDestinyCapture();
             if (Time.realtimeSinceStartup >= nextSweep)
             {
                 nextSweep = Time.realtimeSinceStartup + 3;
@@ -96,15 +100,15 @@ namespace GuiguModTranslation
                 {
                     // Serialized prefab text and TMP character arrays can bypass setters.
                     foreach (var text in UnityEngine.Object.FindObjectsOfType<Text>())
-                    { string value = text.text, translated = value; BeforeText(ref translated); if (translated != value) text.text = translated; }
+                    { string value = text.text, translated = value; BeforeText(text, ref translated); if (translated != value) text.text = translated; }
                     foreach (var text in UnityEngine.Object.FindObjectsOfType<TMP_Text>())
-                    { string value = text.text, translated = value; BeforeText(ref translated); if (translated != value) text.text = translated; }
+                    { string value = text.text, translated = value; BeforeText(text, ref translated); if (translated != value) text.text = translated; }
                     foreach (var text in UnityEngine.Object.FindObjectsOfType<TextMesh>())
-                    { string value = text.text, translated = value; BeforeText(ref translated); if (translated != value) text.text = translated; }
+                    { string value = text.text, translated = value; BeforeText(text, ref translated); if (translated != value) text.text = translated; }
                 }
                 catch (Exception error) { if (errors.Count < 20) errors.Add(error.Message); }
             }
-            if (!probeDone && Time.realtimeSinceStartup > 20 && Environment.GetCommandLineArgs().Contains("--guigu-translation-probe"))
+            if (!probeDone && destinyCapturedAt != null && Time.realtimeSinceStartup > 20 && Environment.GetCommandLineArgs().Contains("--guigu-translation-probe"))
             { probeDone = true; Probe(); }
             if (Time.realtimeSinceStartup >= nextStatus)
             { nextStatus = Time.realtimeSinceStartup + 10; WriteStatus(); }
@@ -114,8 +118,9 @@ namespace GuiguModTranslation
         {
             try
             {
-                WriteJson("runtime-status.json", new { version = "1.1.0", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
+                WriteJson("runtime-status.json", new { version = "1.2.1", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
                     loaded_at_utc = DateTime.UtcNow.ToString("o"), entries = catalog.Count, hits, conflicts_resolved = conflictsResolved, store_sha256 = storeHash, hooks, errors });
+                WriteDestinyInventory();
             }
             catch { }
         }
@@ -145,7 +150,8 @@ namespace GuiguModTranslation
                     results.Add(new { source = sample.Key, expected = sample.Value, ugui = text.text, tmp = property, tmp_settext = tmp.text,
                         passed = text.text == sample.Value && property == sample.Value && tmp.text == sample.Value });
                 }
-                WriteJson("probe-result.json", new { entries = catalog.Count, hooks, errors, results });
+                WriteJson("probe-result.json", new { version = "1.2.1", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
+                    entries = catalog.Count, hooks, errors, results, destinies = ProbeDestinyLocalization() });
             }
             catch (Exception error) { WriteJson("probe-result.json", new { error = error.ToString() }); }
             finally { foreach (var go in objects) UnityEngine.Object.Destroy(go); }

@@ -25,6 +25,7 @@ def preflight(game, runtime_dir=None):
     game = Path(game).resolve()
     required = ['guigubahuang.exe', 'version.dll', 'MelonLoader/MelonLoader.dll',
                 'MelonLoader/0Harmony.dll', 'MelonLoader/Managed/UnhollowerBaseLib.dll',
+                'MelonLoader/Managed/Assembly-CSharp.dll',
                 'MelonLoader/Managed/UnityEngine.UI.dll', 'MelonLoader/Managed/Unity.TextMeshPro.dll']
     if any(not (game / p).is_file() for p in required):
         raise ValueError('Choose a Tale of Immortal installation with its bundled MelonLoader 0.5.x. '
@@ -157,6 +158,20 @@ def install(project, game, runtime_dir=None):
             raise
     return {'state': 'installed', 'count': len(entries), 'skipped': skipped, 'mod': mod['id'],
             'conflicts_resolved': len(conflicts), 'restart_required': True, 'store': str(store), 'loader': str(loader)}
+
+
+def install_detector(game, runtime_dir=None):
+    """Install the capture-capable loader even before any translations exist."""
+    payload = preflight(game, runtime_dir)
+    loader, store = paths(game)
+    with locked(store):
+        previous = loader.read_bytes() if loader.exists() else None
+        if previous == payload:
+            return False
+        if previous:
+            atomic_bytes(store.parent / 'backups' / (uuid.uuid4().hex + '.dll'), previous)
+        atomic_bytes(loader, payload)
+    return True
 
 
 def installation_message(result, partial=False):

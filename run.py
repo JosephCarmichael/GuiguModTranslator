@@ -317,6 +317,9 @@ def main():
     parser.add_argument('--game', type=Path, default=GAME)
     sub = parser.add_subparsers(dest='command')
     sub.add_parser('list')
+    destinies = sub.add_parser('scan-destinies', help='Find untranslated destiny names and hover descriptions')
+    destinies.add_argument('--output', type=Path, default=APP / 'projects' / 'character-creation-destinies')
+    destinies.add_argument('--install-detector', action='store_true', help='Install the runtime detector for the next game launch')
     scan = sub.add_parser('extract')
     scan.add_argument('mod', help='Mod ID, folder/DLL path, or all')
     scan.add_argument('--output', type=Path, default=APP / 'projects')
@@ -355,6 +358,17 @@ def main():
         else:
             result = installation_status(args.game)
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    if args.command == 'scan-destinies':
+        from destinies import scan_destinies, destiny_report
+        if args.install_detector:
+            from installer import install_detector
+            install_detector(args.game)
+        project = scan_destinies(args.game, args.output, print)
+        report = destiny_report(project)
+        print(json.dumps({'missing_texts': report['missing_texts'],
+                          'unresolved_fields': len(report['unresolved_fields']),
+                          'runtime_inventory': report['runtime_inventory'], 'folder': str(args.output)}, indent=2))
         return
     if args.command in ('translate', 'import-csv'):
         folder = args.project if args.project.is_dir() else args.project.parent

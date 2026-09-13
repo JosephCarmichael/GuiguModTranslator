@@ -18,7 +18,8 @@ def check(report_path, live=False):
         from extractor import extract, read_json, MAGIC, MOD_KEY
         from translation import translate
         from app_config import service_profile
-        from app_config import RESOURCE_DIR
+        from app_config import RESOURCE_DIR, is_friends_build
+        report['edition'] = 'friends' if is_friends_build() else 'personal'
         import hashlib
         from installer import LOADER
         runtime = RESOURCE_DIR / 'runtime'
@@ -60,7 +61,7 @@ def check(report_path, live=False):
             parallel = {'mod': {'id': 'parallel'}, 'coverage': {'files': []}, 'units': [
                 {'id': str(i), 'source': f'灵力{i} {{0}}', 'translation': '', 'status': 'untranslated',
                  'category': 'player_text', 'occurrences': []} for i in range(192)]}
-            with patch('translation.urllib.request.urlopen', fake_http):
+            with patch('translation_cost.is_friends_build', return_value=False), patch('translation.urllib.request.urlopen', fake_http):
                 result = translate(parallel, temp/'parallel-output', batch_size=12, concurrency=16)
             assert result['translated'] == 192 and result['failed'] == 0
             assert all(u['translation'] == u['source'].replace('灵力', 'Spirit ') for u in read_json(temp/'parallel-output/project.json')['units'])
@@ -87,7 +88,7 @@ def check(report_path, live=False):
                 return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps([s.replace('灵力', 'Spirit ') for s in texts])}}]}).encode())
             larger = {'mod': {'id': 'larger-batches'}, 'coverage': {'files': []},
                       'units': [{**unit, 'translation': ''} for unit in parallel['units'][:96]]}
-            with patch('translation.urllib.request.urlopen', batch_http):
+            with patch('translation_cost.is_friends_build', return_value=False), patch('translation.urllib.request.urlopen', batch_http):
                 result = translate(larger, temp/'larger-output', concurrency=4, batch_size=48)
             assert result['translated'] == 96 and sizes == [48, 48]
             report['checks'].append('96 entries translated in two 48-entry requests (offline transport)')
@@ -118,6 +119,30 @@ def check(report_path, live=False):
             uninstall('second', temp/'game')
             assert read_store(store)['mods']['first']['entries']['宝剑'] == 'Sword'
             report['checks'].append('Conflicting installation succeeds, preserves other dictionaries and uninstalls independently')
+            from translation_cost import enforce_translation_policy, estimate_project, full_translation_allowed
+            expensive = {'mod': {'id': 'expensive'}, 'coverage': {'files': []},
+                         'units': [{**parallel['units'][0], 'source': '宝剑' * 5000, 'translation': ''}]}
+            assert not full_translation_allowed(estimate_project(expensive))
+            if is_friends_build():
+                with patch('translation.request_batch') as paid:
+                    try:
+                        translate(expensive, temp/'blocked')
+                    except PermissionError as error:
+                        assert '0.5p' in str(error)
+                    else:
+                        raise AssertionError('Friends full-mod limit was bypassed')
+                    paid.assert_not_called()
+                report['checks'].append('Friends limit blocks expensive mods before requests')
+            else:
+                enforce_translation_policy(expensive)
+                report['checks'].append('Personal edition has no full-mod cost restriction')
+            from destinies import PROJECT_ID
+            expensive['mod']['id'] = PROJECT_ID
+            expensive['destiny_fields'] = [{'source': expensive['units'][0]['source'], 'field': 'tips'}]
+            with patch('translation.request_batch', return_value=['Treasure sword']):
+                result = translate(expensive, temp/'destiny-exempt')
+            assert result['translated'] == 1
+            report['checks'].append('Destiny-menu translation remains available above the limit (offline transport)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')

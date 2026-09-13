@@ -13,6 +13,7 @@ namespace GuiguModTranslation
         private readonly List<Template> templates = new List<Template>();
         private readonly Dictionary<string, string> cache = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Regex Slots = new Regex(@"\{(\d+)\}");
+        private static readonly Regex PresentationParts = new Regex(@"(<(?:/?(?:color|size|b|i|u|s|r|g|alpha|align|font|sprite|br)\b[^<>\r\n]*|\#[0-9a-f]{3,8})>|\r\n|\r|\n)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         public int Count { get { return exact.Count; } }
 
         public TranslationCatalog(Dictionary<string, string> entries)
@@ -43,6 +44,27 @@ namespace GuiguModTranslation
 
         public string Translate(string text)
         {
+            string result = TranslateCore(text);
+            if (String.IsNullOrEmpty(text) || result != text || text.Length > 8192 || !HasChinese(text)) return result;
+            // Only complete text runs between formatting/line boundaries. Never
+            // replace a known name inside a longer unrelated Chinese word.
+            var parts = PresentationParts.Split(text);
+            if (parts.Length == 1) return result;
+            for (int i = 0; i < parts.Length; i += 2)
+            {
+                string part = parts[i], trimmed = part.Trim();
+                string translated = TranslateCore(trimmed);
+                if (translated != trimmed)
+                {
+                    int start = part.IndexOf(trimmed, StringComparison.Ordinal);
+                    parts[i] = part.Substring(0, start) + translated + part.Substring(start + trimmed.Length);
+                }
+            }
+            return String.Concat(parts);
+        }
+
+        private string TranslateCore(string text)
+        {
             if (String.IsNullOrEmpty(text)) return text;
             string found;
             if (exact.TryGetValue(text, out found)) return found;
@@ -68,8 +90,9 @@ namespace GuiguModTranslation
             return result;
         }
 
-        private static bool HasChinese(string value)
+        public static bool HasChinese(string value)
         {
+            if (value == null) return false;
             foreach (char c in value) if (c >= '\u3400' && c <= '\u9fff' || c >= '\uf900' && c <= '\ufaff') return true;
             return false;
         }

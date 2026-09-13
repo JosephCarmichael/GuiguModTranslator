@@ -6,10 +6,26 @@ Double-click `GuiguModTranslator.exe`. The Windows executable includes Python,
 Tk, the mod readers and all required packages. Your friends do not need Python,
 pip, another translation app or an API-key setup step.
 
-The friends package is `release/GuiguModTranslator-Friends.zip`. Send that ZIP.
+The friends package is `release/GuiguModTranslator-Friends.zip`, or the timestamped
+Friends ZIP from a side-by-side build. Send the **Friends** ZIP, not the Personal one.
 They extract it and open `GuiguModTranslator.exe` or `Launch.bat`. It requires
 64-bit Windows 10/11, an internet connection and downloaded Tale of Immortal mods.
 The included shared access calls DeepSeek V4.1 Flash through OpenRouter.
+
+Each mod has a **Full-mod estimate** column, in pence. In the friends edition,
+full translation is unavailable when that estimate exceeds **0.5p (£0.005)**.
+The personal edition shows estimates without this restriction. The **Translate
+destiny menu** button is available in both editions and is exempt from the limit.
+It translates the separate character-creation destiny project, not the full mods
+that supply those destinies. Installing saved translations remains available.
+
+Estimates scan source files locally without translation requests or changes to saved
+projects. They include all extracted nontechnical source text, even if already
+translated, plus request overhead and a 30% allowance. Peak Flash 4.1 rates and an
+ECB exchange-rate snapshot provide the GBP conversion. These are estimates, not
+guaranteed bills. See **Options → About cost estimates** for dates and assumptions.
+Unreadable or partial source files mark the estimate incomplete and keep full
+translation unavailable in the friends edition. Refresh mods after source changes.
 
 The app detects Steam libraries automatically. If needed, use **Options →
 Choose game folder** once. Select a mod, then press **Translate and install**.
@@ -64,6 +80,28 @@ use **Install saved translations** again.
 The detailed editor, CSV import/export and coverage report are under **Options →
 Translation editor**. They are kept off the main translation screen.
 
+**Find untranslated destinies** checks starting-destiny names, hover tips and
+introductory descriptions across downloaded mod tables and the game's latest
+loaded inventory. It selects **Character creation destinies**; press **Translate
+and install** to fill its missing text. Existing valid English and saved edits
+are reused. Partly Chinese translations and broken formatting stay pending.
+The scan itself makes no translation requests.
+
+The button also installs the destiny detector. Restart the game after the first
+update, open character creation, and scan again. The detector inventories every
+loaded type-1 destiny, including ones not rolled or hovered, and records Chinese
+text encountered in destiny/tooltip UI while character creation is open. Hover
+tooltips to capture additional dynamically assembled text. Destiny localisation
+is translated before tooltip formatting; empty English entries can fall back to
+authored Chinese for translation. Missing localisation rows remain reported.
+
+The saved `character-creation-destinies/untranslated-destinies.json` report lists
+missing fields and unresolved keys. `UserData/GuiguModTranslator/destiny-inventory.json`
+records the runtime process ID and capture time. Downloaded tables can include
+inactive mods; runtime data reflects its last game session. These are inventories,
+not a claim that every tooltip has been visually checked. Restart after installing
+translations to refresh the game's dictionary.
+
 Packaged copies save work under `%LOCALAPPDATA%\GuiguModTranslator`. The source
 version uses its own folder. Existing local credentials can be stored in
 `service.json`; builds include only the explicitly configured shared profile.
@@ -104,6 +142,10 @@ and string `SetText` overloads, and `TextMesh`. A periodic scan also handles
 active prefab labels and text set through other paths. Matching is exact; common
 numbered `{0}` templates also match after the game substitutes values. Rich-text
 tags and placeholders remain intact.
+
+Complete text runs separated by supported rich-text tags or line breaks also
+match, preserving their surrounding whitespace and formatting. Known names are
+never substituted inside longer Chinese words.
 
 Translations affect display components globally: identical Chinese text may also
 appear in another mod or the base game. Conflicting translations across installed
@@ -173,12 +215,22 @@ are stored in the source repository. Build with PyInstaller:
 ```bat
 .venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
 .venv\Scripts\python.exe -X utf8 build_release.py
+.venv\Scripts\python.exe -X utf8 build_release.py --offline --side-by-side --edition friends
+.venv\Scripts\python.exe -X utf8 build_release.py --offline --side-by-side --edition personal
 ```
 
 The build compiles and tests the runtime loader, then verifies a folder bundle, then creates and tests the single-file
 executable in an isolated folder, and finally assembles the friends ZIP. Source
 CLI commands remain available through `python entry.py`; the main window opens
 with no arguments, and `--advanced` opens the detailed editor.
+
+The edition is embedded at build time, not selected in user preferences. Builds
+default to Friends. The shared translation entry point enforces the limit for
+the main window, editor and CLI before requests are sent. A frozen app with
+missing or invalid edition metadata retains the Friends restriction.
+
+[Cost estimates and friends-limit validation](COST_ESTIMATE_VALIDATION.md)
+documents the calculation, pricing sources, packaging and checks.
 
 ## Implementation references
 
@@ -206,6 +258,11 @@ specifies `deepseek-flash` as the API model name.
 The `translate` CLI command still saves a project; run `install` afterwards.
 Add `--concurrency 32` (or another listed value) to override the saved request limit
 for that translation run, for example `entry.py translate projects/2859071194 --concurrency 64`.
+
+`entry.py scan-destinies --install-detector` performs the destiny audit and installs
+the runtime detector. Omit `--install-detector` for a scan without installation.
+Translate the resulting `projects/character-creation-destinies` project, then
+install it using the same commands as other projects.
 The main desktop button runs both steps. Installation conflicts resolve automatically
 and the success message reports their count. If a previous installation stopped on
 a conflict, choose **Options → Install saved translations** to retry without API calls.

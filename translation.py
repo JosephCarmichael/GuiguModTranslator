@@ -236,6 +236,8 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     batch_size = translation_batch_size() if batch_size is None else batch_size
     if type(batch_size) is not int or batch_size not in BATCH_SIZE_CHOICES:
         raise ValueError('Entries per request must be one of: ' + ', '.join(map(str, BATCH_SIZE_CHOICES)))
+    from translation_cost import enforce_translation_policy
+    enforce_translation_policy(project, batch_size)
     units = [u for u in project['units'] if not u['translation'] and u['category'] != 'technical'
              and (include_review or u['category'] == 'player_text')]
     existing = sum(bool(u['translation']) for u in project['units'] if u['category'] != 'technical'

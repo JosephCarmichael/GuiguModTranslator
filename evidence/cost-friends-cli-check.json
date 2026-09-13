@@ -1,0 +1,13 @@
+{
+  "result": "passed",
+  "edition": "friends",
+  "package_sha256": "52be858a52999fd8bbdc69088466ec3fa29c1eadf83c032d106a067aaf44b819",
+  "checkpoint_unchanged": true,
+  "destiny_texts": 83,
+  "checks": [
+    "copied executable with no Python in PATH",
+    "CLI full-mod limit before requests",
+    "saved project unchanged",
+    "real destiny scan available in friends edition"
+  ]
+}

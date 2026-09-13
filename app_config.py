@@ -14,6 +14,17 @@ BATCH_SIZE_CHOICES = (12, 24, 48, 96)
 DEFAULT_BATCH_SIZE = 48
 
 
+def is_friends_build():
+    if not getattr(sys, 'frozen', False):
+        return False
+    try:
+        policy = json.loads((RESOURCE_DIR / 'build_policy.json').read_text(encoding='utf-8'))
+        return policy.get('edition') != 'personal'
+    except (OSError, ValueError, AttributeError):
+        # A frozen build with missing/invalid policy never gains personal access.
+        return True
+
+
 def preferences():
     try:
         value = json.loads((data_dir() / 'preferences.json').read_text(encoding='utf-8'))

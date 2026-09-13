@@ -9,7 +9,7 @@ $framework = Join-Path ${env:ProgramFiles(x86)} 'Reference Assemblies/Microsoft/
 $output = Join-Path $root 'runtime'
 New-Item -ItemType Directory -Force $output | Out-Null
 $refs = @('mscorlib.dll','System.dll','System.Core.dll','System.Web.Extensions.dll') | ForEach-Object { Join-Path $framework $_ }
-$gameRefs = @('UnhollowerBaseLib.dll','Il2Cppmscorlib.dll','UnityEngine.CoreModule.dll','UnityEngine.UI.dll','Unity.TextMeshPro.dll','UnityEngine.TextRenderingModule.dll') | ForEach-Object { Join-Path $GameRoot "MelonLoader/Managed/$_" }
+$gameRefs = @('Assembly-CSharp.dll','UnhollowerBaseLib.dll','Il2Cppmscorlib.dll','UnityEngine.CoreModule.dll','UnityEngine.UI.dll','Unity.TextMeshPro.dll','UnityEngine.TextRenderingModule.dll') | ForEach-Object { Join-Path $GameRoot "MelonLoader/Managed/$_" }
 $gameRefs += Join-Path $GameRoot 'MelonLoader/MelonLoader.dll'
 $gameRefs += Join-Path $GameRoot 'MelonLoader/0Harmony.dll'
 function Compile($name, $sources, $references, $target) {
@@ -21,9 +21,9 @@ function Compile($name, $sources, $references, $target) {
     & $dotnet $compiler /noconfig "@$response"
     if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $name" }
 }
-Compile 'GuiguModTranslation.dll' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $PSScriptRoot 'TranslationMod.cs')) ($refs + $gameRefs) 'library'
+Compile 'GuiguModTranslation.dll' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $PSScriptRoot 'TranslationMod.cs'),(Join-Path $PSScriptRoot 'DestinyCapture.cs')) ($refs + $gameRefs) 'library'
 $hash = (Get-FileHash (Join-Path $output 'GuiguModTranslation.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.1.0';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
+[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.2.1';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
 if ($Test) {
     Compile 'CatalogTests.exe' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $root 'tests/CatalogTests.cs')) $refs 'exe'
     & (Join-Path $output 'CatalogTests.exe')
