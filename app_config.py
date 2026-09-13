@@ -8,6 +8,28 @@ from pathlib import Path
 
 RESOURCE_DIR = Path(__file__).resolve().parent
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else RESOURCE_DIR
+CONCURRENCY_CHOICES = (1, 4, 8, 16, 32, 64, 128)
+DEFAULT_CONCURRENCY = 16
+
+
+def preferences():
+    try:
+        value = json.loads((data_dir() / 'preferences.json').read_text(encoding='utf-8'))
+        return value if isinstance(value, dict) else {}
+    except (ValueError, OSError):
+        return {}
+
+
+def translation_concurrency():
+    value = preferences().get('concurrency', DEFAULT_CONCURRENCY)
+    return value if type(value) is int and value in CONCURRENCY_CHOICES else DEFAULT_CONCURRENCY
+
+
+def save_preferences(**changes):
+    from extractor import atomic_json
+    value = preferences()
+    value.update(changes)
+    atomic_json(data_dir() / 'preferences.json', value)
 
 def data_dir():
     override = os.environ.get('GUIGU_TRANSLATOR_DATA')

@@ -7,7 +7,7 @@ import threading
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from app_config import APP_DIR, installed_game
+from app_config import APP_DIR, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
 from extractor import APP, atomic_json, discover
 from mod_workflow import run_job
 
@@ -25,6 +25,7 @@ class App(tk.Tk):
         self.stop = threading.Event()
         self.folder = None
         self.search = tk.StringVar()
+        self.concurrency = tk.IntVar(value=translation_concurrency())
         self.status = tk.StringVar(value='Finding your mods…')
         style = ttk.Style(self)
         style.theme_use('clam')
@@ -64,6 +65,12 @@ class App(tk.Tk):
         scroll.pack(side='right', fill='y')
         self.list.bind('<<TreeviewSelect>>', self.selected)
         self.choose = ttk.Button(body, text='Choose game folder…', command=self.choose_game)
+        speed = ttk.Frame(body)
+        speed.pack(fill='x', pady=(12, 0))
+        ttk.Label(speed, text='Parallel requests').pack(side='left')
+        self.parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
+        self.parallel.pack(side='left', padx=10)
+        self.parallel.bind('<<ComboboxSelected>>', self.change_concurrency)
         self.action = ttk.Button(body, text='Translate and install', style='Action.TButton', command=self.translate)
         self.action.pack(fill='x', pady=(20, 12))
         self.action.state(['disabled'])
@@ -102,7 +109,7 @@ class App(tk.Tk):
             messagebox.showerror('Game not found', 'Choose the Tale of Immortal folder containing guigubahuang.exe.')
             return
         self.game = Path(path)
-        atomic_json(APP / 'preferences.json', {'game': str(self.game)})
+        save_preferences(game=str(self.game))
         self.choose.pack_forget()
         self.refresh()
 
@@ -130,7 +137,7 @@ class App(tk.Tk):
         if self.busy:
             self.stop.set()
             self.action.state(['disabled'])
-            self.status.set('Stopping after the current request. Your progress will be saved.')
+            self.status.set('Stopping new requests. Finishing requests already sent and saving progress…')
             return
         selection = self.list.selection()
         if not selection:
@@ -138,6 +145,8 @@ class App(tk.Tk):
         mod = self.mods[selection[0]]
         self.folder = APP / 'projects' / mod['id']
         self.busy = True
+        concurrency = self.concurrency.get()
+        self.parallel.configure(state='disabled')
         self.stop.clear()
         self.action.configure(text='Cancel')
         self.result_button.pack_forget()
@@ -145,7 +154,7 @@ class App(tk.Tk):
         self.bar.start(14)
         def job():
             try:
-                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game)
+                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game, concurrency=concurrency)
                 self.events.put(('result', result))
             except InterruptedError:
                 self.events.put(('error', 'Cancelled. Previously saved translations are kept.'))
@@ -155,10 +164,17 @@ class App(tk.Tk):
 
     def finish(self):
         self.busy = False
+        self.parallel.configure(state='readonly')
         self.bar.stop()
         self.bar.pack_forget()
         self.action.configure(text='Translate and install')
         self.action.state(['!disabled'] if self.list.selection() else ['disabled'])
+
+    def change_concurrency(self, _=None):
+        try:
+            save_preferences(concurrency=self.concurrency.get())
+        except OSError as exc:
+            self.status.set('Could not save parallel request setting: ' + str(exc))
 
     def poll(self):
         latest = None
@@ -249,6 +265,6 @@ class App(tk.Tk):
     def close(self):
         if self.busy:
             self.stop.set()
-            self.status.set('Please wait for the current step to stop and save, then close again.')
+            self.status.set('Waiting for requests already sent to finish and save. Close again when stopped.')
             return
         self.destroy()

@@ -16,6 +16,21 @@ Choose game folder** once. Select a mod, then press **Translate and install**.
 Extraction and translation run together. The same button cancels a running job.
 Progress is saved after each batch, and existing translations survive rescans.
 
+**Parallel requests** selects how many DeepSeek batches can run at once:
+**1, 4, 8, 16, 32, 64 or 128**, with **16** as the default. The app remembers your
+choice. Each request still groups up to 12 text entries with a 6,000-character
+batch target; a single longer entry stays intact. The progress display shows
+completed translations and pending requests. Higher settings can improve speed
+when the service has capacity; they do not guarantee proportional speedups.
+
+Completed batches are matched to their original text and saved by one coordinator,
+including when replies arrive out of order. Simultaneous completions share a
+checkpoint. Rate-limit responses pause new attempts across the job and honor
+`Retry-After`, with backoff and jitter otherwise. Cancellation stops dispatching
+new work and saves successful replies from requests already sent; those requests
+must finish or time out before the job closes. Retries and account errors keep
+completed translations available for resuming.
+
 The app installs `Mods/GuiguModTranslation.dll` and the selected mod's validated
 translations into `UserData/GuiguModTranslator/installed.json`. **Restart the game
 after installation, updates or removal.** Your next game process loads the
@@ -173,9 +188,13 @@ specifies `deepseek-flash` as the API model name.
 ```
 
 The `translate` CLI command still saves a project; run `install` afterwards.
+Add `--concurrency 32` (or another listed value) to override the saved request limit
+for that translation run, for example `entry.py translate projects/2859071194 --concurrency 64`.
 The main desktop button runs both steps. Installation conflicts are resolved in
 the editor or by removing the other installed dictionary, then retrying installation.
 
 The runtime uses [Harmony prefix patches](https://harmony.pardeike.net/v2/articles/patching-injections.html)
 to substitute the text argument before Unity displays it. Build references come
 from the local game's assemblies; no proprietary game DLLs are redistributed.
+
+[Parallel-request implementation and validation](PARALLEL_TRANSLATION_VALIDATION.md) records the concurrency and live API checks.

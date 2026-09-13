@@ -46,6 +46,25 @@ def check(report_path, live=False):
             profile=service_profile()
             report['provider'],report['model']=profile['provider'],profile['model']
             report['checks'].append('Bundled translation access found (key not logged)')
+            # Exercise the bundled thread pool, response ownership and saving
+            # without making extra paid requests during portable validation.
+            import io
+            import threading
+            from unittest.mock import patch
+            barrier = threading.Barrier(16, timeout=10)
+            def fake_http(request, timeout):
+                barrier.wait()
+                texts = json.loads(json.loads(request.data)['messages'][1]['content'])
+                values = [s.replace('灵力', 'Spirit ') for s in texts]
+                return io.BytesIO(json.dumps({'choices': [{'message': {'content': json.dumps(values)}}]}).encode())
+            parallel = {'mod': {'id': 'parallel'}, 'coverage': {'files': []}, 'units': [
+                {'id': str(i), 'source': f'灵力{i} {{0}}', 'translation': '', 'status': 'untranslated',
+                 'category': 'player_text', 'occurrences': []} for i in range(192)]}
+            with patch('translation.urllib.request.urlopen', fake_http):
+                result = translate(parallel, temp/'parallel-output', concurrency=16)
+            assert result['translated'] == 192 and result['failed'] == 0
+            assert all(u['translation'] == u['source'].replace('灵力', 'Spirit ') for u in read_json(temp/'parallel-output/project.json')['units'])
+            report['checks'].append('16 simultaneous requests with correct saved responses (offline transport)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')

@@ -1,0 +1,13 @@
+{
+  "result": "passed",
+  "mods": 11,
+  "checks": [
+    "mod discovery",
+    "selection",
+    "parallel request options",
+    "saved request limit",
+    "selected limit forwarded to job",
+    "limit locked during job",
+    "simulated success display"
+  ]
+}

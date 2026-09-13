@@ -11,6 +11,7 @@ from pathlib import Path
 
 from extractor import APP, GAME, discover, extract, atomic_json, read_json, save_project, export_csv, import_csv, validate_translation
 from translation import DEEPSEEK_LABEL
+from app_config import CONCURRENCY_CHOICES, translation_concurrency, save_preferences
 
 
 def gui():
@@ -32,6 +33,7 @@ def gui():
             self.search = tk.StringVar()
             self.category = tk.StringVar(value='All extracted text')
             self.include_review = tk.BooleanVar(value=False)
+            self.concurrency = tk.IntVar(value=translation_concurrency())
             self.status = tk.StringVar(value='Select a mod, then Extract Chinese text.')
             top = ttk.Frame(self, padding=10)
             top.pack(fill='x')
@@ -97,6 +99,12 @@ def gui():
             self.translate_button = ttk.Button(translation, text='Translate with DeepSeek', command=self.translate)
             self.translate_button.pack(side='left')
             ttk.Button(translation, text='Cancel job', command=self.stop.set).pack(side='right')
+            speed = ttk.Frame(right)
+            speed.pack(fill='x', pady=4)
+            ttk.Label(speed, text='Parallel requests').pack(side='left')
+            parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
+            parallel.pack(side='left', padx=8)
+            parallel.bind('<<ComboboxSelected>>', lambda _: save_preferences(concurrency=self.concurrency.get()))
             ttk.Label(right, text='DeepSeek V4.1 Flash uses your saved API key. Extracted files stay in this project.').pack(anchor='w')
             ttk.Label(self, textvariable=self.status, padding=10, wraplength=1320).pack(fill='x')
             self.refresh()
@@ -240,7 +248,8 @@ def gui():
             if self.busy or not self.project: return
             from translation import translate
             project, folder, review = self.project, self.folder, self.include_review.get()
-            self.start(lambda: translate(project, folder, progress=self.progress, stop=self.stop.is_set, include_review=review))
+            concurrency = self.concurrency.get()
+            self.start(lambda: translate(project, folder, progress=self.progress, stop=self.stop.is_set, include_review=review, concurrency=concurrency))
 
         def export(self):
             if self.busy or not self.project: return
@@ -309,6 +318,8 @@ def main():
     trans.add_argument('--target', default='en')
     trans.add_argument('--glossary', type=Path)
     trans.add_argument('--include-review', action='store_true')
+    trans.add_argument('--concurrency', type=int, choices=CONCURRENCY_CHOICES, default=None,
+                       help='Maximum simultaneous requests (saved preference, otherwise 16)')
     imp = sub.add_parser('import-csv')
     imp.add_argument('project', type=Path)
     imp.add_argument('csv', type=Path)
@@ -342,7 +353,7 @@ def main():
         if args.command == 'translate':
             from translation import translate
             result = translate(project, folder, target=args.target, progress=print,
-                               glossary=args.glossary, include_review=args.include_review)
+                               glossary=args.glossary, include_review=args.include_review, concurrency=args.concurrency)
         else:
             result = import_csv(project, args.csv)
             save_project(project, folder)
