@@ -8,6 +8,12 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
 def main():
+    if '--setup-game' in sys.argv:
+        from app_config import save_preferences
+        from game_setup import validate_game
+        game = validate_game(sys.argv[sys.argv.index('--setup-game') + 1])
+        save_preferences(game=str(game))
+        sys.argv = [sys.argv[0]]
     if '--self-test' in sys.argv or '--self-test-live' in sys.argv:
         from frozen_checks import check
         flag = '--self-test-live' if '--self-test-live' in sys.argv else '--self-test'

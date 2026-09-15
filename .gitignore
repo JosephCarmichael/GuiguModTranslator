@@ -4,9 +4,14 @@ projects/
 *.pyc
 service.json
 bundled_service.json
+openrouter-access.json
+translation-balances.json
 build/
 dist/
 release/
 *.spec
 runtime/
 *.exe
+setup-last.json
+setup-*.lock
+Guigu-Logs.txt

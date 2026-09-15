@@ -1,10 +1,30 @@
 # Portable Windows release
 
-The friends package is `release/GuiguModTranslator-Friends.zip`.
+The current friends package is `release/GuiguModTranslator-Friends-1.3.7.zip`.
 It contains a single-file Windows executable, a small launcher, instructions
 and dependency license texts. Python 3.13, Tcl/Tk and the required Python/native
 packages are embedded in the executable. No separate Python installation is
 needed. The app requires 64-bit Windows 10/11 and internet access to translate.
+
+The 1.3.6 update adds a top-left balance that decreases on confirmed billed
+responses and refreshes the current key allowance from OpenRouter. It removes
+the shared-key/destiny availability banner. GBP amounts are estimates; the
+provider dollar amount is shown underneath. See [balance validation](BALANCE_VALIDATION.md).
+
+The 1.3.3 update adds **API key…** for a personal OpenRouter key. Personal-key
+requests have no app cost cap and use that user's OpenRouter credit. The shared
+key retains the 5p cap; switching back restores it. Credentials are encrypted
+for the user's Windows account, excluded from this ZIP and not included in logs.
+This update retains the 1.3.2 Steam launch-path repair.
+
+Since 1.3.0 the EXE also embeds pinned MelonLoader 0.5.4, Cpp2IL,
+Il2CppAssemblyUnhollower and matching Unity reference libraries. Setup finds the
+owned Steam game, installs missing files, starts first-time generation and
+verifies the live translation plugin with a loading bar. Microsoft runtimes are
+downloaded only when missing, checked for a valid Microsoft signature, and
+installed automatically. Windows permission or a PC restart may be needed.
+An upstream source archive accompanies the licensed setup tools in the ZIP.
+See [AUTOMATIC_SETUP_VALIDATION.md](AUTOMATIC_SETUP_VALIDATION.md).
 
 The main screen has a searchable mod list and one **Translate and install**
 button. Extraction, translation and installation run together. Restart the game

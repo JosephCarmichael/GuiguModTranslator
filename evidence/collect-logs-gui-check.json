@@ -1,0 +1,12 @@
+{
+  "result": "passed",
+  "characters": 672649,
+  "checks": [
+    "visible Collect logs button at minimum window size",
+    "collect during stuck setup without cancelling it",
+    "real Windows application events and code page",
+    "plain text beside executable",
+    "Unicode clipboard equals report",
+    "clipboard survives window closing"
+  ]
+}

@@ -39,6 +39,7 @@ static class CatalogTests
         // Repeated lookups exercise the bounded cache too.
         Equal("<color=red>Restore 25 spirit</color>", catalog.Translate("<color=red>恢复25灵力</color>"));
         TestInstalledConflicts();
+        TestWhitespaceKeys();
         if (args.Length == 2) TestLiveInventory(args[0], args[1]);
         Console.WriteLine(count + " catalog assertions passed.");
     }
@@ -46,7 +47,7 @@ static class CatalogTests
     static void TestLiveInventory(string storePath, string inventoryPath)
     {
         var json = new JavaScriptSerializer { MaxJsonLength = Int32.MaxValue };
-        var store = json.Deserialize<InstalledStore>(System.IO.File.ReadAllText(storePath));
+        var store = InstalledTranslations.Deserialize(System.IO.File.ReadAllText(storePath));
         int conflicts;
         var entries = InstalledTranslations.Resolve(store, path => true, out conflicts);
         var catalog = new TranslationCatalog(entries);
@@ -58,6 +59,23 @@ static class CatalogTests
             Equal(expected, catalog.Translate(source));
             if ((bool)field["missing"]) Console.WriteLine("Runtime mismatch: id=" + field["destiny_id"] + "; field=" + field["field"] + "; source length=" + source.Length);
         }
+    }
+
+    static void TestWhitespaceKeys()
+    {
+        var source = "\n<COLOR=#FF0000>万古不灭</COLOR>\n\n攻击+12\n\n";
+        var target = "\n<COLOR=#FF0000>Eternally Immortal</COLOR>\n\nAttack +12\n\n";
+        var store = new InstalledStore { format = "guigu-installed-v1", mods = new Dictionary<string, InstalledMod> {
+            { "test", new InstalledMod { source_path = "present", entries = new Dictionary<string, string> {
+                { source, target }, { " 宝剑 ", " Sword " }, { "\r\n宝剑\r\n", "\r\nSword\r\n" },
+                { "\\n宝剑\\n", "\\nSword\\n" } } } } } };
+        var loaded = InstalledTranslations.Deserialize(new JavaScriptSerializer().Serialize(store));
+        int conflicts;
+        var catalog = new TranslationCatalog(InstalledTranslations.Resolve(loaded, path => true, out conflicts));
+        Equal(target, catalog.Translate(source));
+        Equal(" Sword ", catalog.Translate(" 宝剑 "));
+        Equal("\r\nSword\r\n", catalog.Translate("\r\n宝剑\r\n"));
+        Equal("\\nSword\\n", catalog.Translate("\\n宝剑\\n"));
     }
 
     static void TestInstalledConflicts()

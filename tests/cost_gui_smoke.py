@@ -23,7 +23,7 @@ def wait_for(app, condition):
 mods = [{'id': 'small', 'name': 'Small mod', 'path': '.'},
         {'id': 'large', 'name': 'Large mod', 'path': '.'}]
 def estimate(mod, *_):
-    return {'pence': {'small': '0.49', 'large': '3', PROJECT_ID: '10'}[mod['id']], 'complete': True}
+    return {'pence': {'small': '0.49', 'large': '6', PROJECT_ID: '10'}[mod['id']], 'complete': True}
 
 with tempfile.TemporaryDirectory() as temp, patch('desktop.APP', Path(temp)), \
      patch('desktop.is_friends_build', return_value=True), patch('desktop.discover', return_value=mods), \
@@ -34,7 +34,7 @@ with tempfile.TemporaryDirectory() as temp, patch('desktop.APP', Path(temp)), \
         assert app.list.set('small', 'cost') == '~0.490p'
         app.list.selection_set('large'); app.selected()
         assert app.action.instate(['disabled'])
-        assert 'Over 0.5p' in app.list.set('large', 'access')
+        assert 'Over 5p' in app.list.set('large', 'access')
         with patch('desktop.run_job') as job:
             app.translate()
             job.assert_not_called()

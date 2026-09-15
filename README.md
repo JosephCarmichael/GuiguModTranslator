@@ -1,6 +1,81 @@
 # Guigu Mod Translator
 
-**Choose a mod → Translate and install → restart the game and play.**
+**Shared-key cap (1.3.7):** full-mod estimates up to and including **5p (£0.05)**
+are now allowed, including the Translate all queue.
+
+**Balance (1.3.6):** the top-left header shows the remaining OpenRouter key
+allowance in estimated pence, with its dollar value underneath. Confirmed billed
+responses reduce it automatically; it refreshes from OpenRouter every 30 seconds.
+The old shared-key/destiny availability banner is removed. Saved translations
+cost nothing to reuse. See [balance validation](BALANCE_VALIDATION.md).
+
+**Open the friends EXE → automatic game setup → translate → launch and play.**
+
+**Translate all (1.3.5):** set the slider beside **Translate all** from **5p to £2
+per mod**. The matching count and combined estimate update as you move it.
+Click to translate and install every matching individual mod, cheapest first.
+The threshold applies to each mod, including the selected boundary; the combined
+cost can exceed the slider value. The bulk action covers all discovered mods,
+regardless of the search text. The separate destiny project keeps its own button.
+
+The shared key's 5p cap still applies; a personal OpenRouter key lifts that cap.
+Bulk translation waits for price scans and excludes incomplete/unknown estimates.
+Each mod is checked again after extraction before any translation request.
+**Cancel all** finishes requests already sent and preserves saved progress.
+Authentication/funding or other job errors stop the remaining queue; partial
+translations and skipped mods are reported without claiming complete translation.
+Results are saved in `projects/translate-all-last.json`.
+
+**Updating keeps saved translations.** New portable EXEs use the same
+`%LOCALAPPDATA%\GuiguModTranslator` folder for the same Windows account.
+Existing translations are reused, so completed unchanged text is not requested
+again. Keep that data folder when replacing/extracting the app ZIP.
+See [bulk translation validation](TRANSLATE_ALL_VALIDATION.md).
+
+**API key help (1.3.4):** the small **What does this mean?** link beside the API
+key controls explains OpenRouter signup, creating a key, adding credit, reusing
+saved translations, and what insufficient funds means for shared or personal keys.
+
+**Personal OpenRouter key (1.3.3):** click **API key…** on the main screen or
+**Options → API key…**, paste your own OpenRouter key, and choose **Save personal
+key**. Translation then uses your OpenRouter credit with no app cost cap. The
+key is stored encrypted for your Windows account and is excluded from logs and
+release packages. **Use shared key** removes the saved personal credential and
+restores the shared-key cap. Saving checks the key's format; it does not make an
+API request or verify account credit. Personal-key errors never fall back to the
+shared account. See [personal-key validation](PERSONAL_API_KEY_VALIDATION.md).
+
+**Launch repair (1.3.2):** fixes the bundled MelonLoader silently closing before
+startup when the Chinese game-folder name cannot be read with Windows' character
+settings. Extract the updated Friends app outside the game folder, for example
+into Downloads. If prompted by the setup bar, choose **Steam → Exit**. Setup
+renames the installation to `TaleOfImmortal`, updates Steam's installation record,
+and restarts Steam for a live translator check. Game binaries, saves, mods and
+translations are preserved. An old-path junction preserves saved mod references;
+the original Steam record is backed up under the app data folder's `launch-repairs`.
+See [launch repair validation](LAUNCH_REPAIR_VALIDATION.md).
+
+Version 1.3.0 finds the installed Steam game and automatically installs missing
+MelonLoader files, first-launch tools and the working 1.2.3 translation plugin.
+A loading bar follows installation and first launch, and setup checks the live
+translator before declaring a new installation complete. Existing compatible
+installations are preserved. No game files or generated game assemblies are
+distributed. The friends still need to own and install Tale of Immortal.
+
+Missing Microsoft runtimes install automatically, using verified Microsoft
+installers. Protected folders use the normal Windows permission prompt. If a
+runtime needs a PC restart, reopen the app afterward. Setup can be cancelled and
+retried; it waits for an open game to be saved and closed before changing files.
+The **Launch game** button starts Tale of Immortal through Steam. Close an already
+running game first when applying newly installed translations.
+
+See [automatic setup validation](AUTOMATIC_SETUP_VALIDATION.md) for test coverage.
+
+**Collect logs** (1.3.1) works even during a stuck setup. It automatically copies
+one readable report to the Windows clipboard and saves **Guigu-Logs.txt** beside
+the EXE. The report includes current setup state, original log timestamps, game
+file checks, Windows crash events and Windows character settings. Logs remain
+on the clipboard after closing the app. No separate script or log ZIP is needed.
 
 Double-click `GuiguModTranslator.exe`. The Windows executable includes Python,
 Tk, the mod readers and all required packages. Your friends do not need Python,
@@ -13,7 +88,8 @@ They extract it and open `GuiguModTranslator.exe` or `Launch.bat`. It requires
 The included shared access calls DeepSeek V4.1 Flash through OpenRouter.
 
 Each mod has a **Full-mod estimate** column, in pence. In the friends edition,
-full translation is unavailable when that estimate exceeds **0.5p (£0.005)**.
+full translation with the shared key is unavailable when that estimate exceeds **5p (£0.05)**.
+Using a personal OpenRouter key removes this app limit.
 The personal edition shows estimates without this restriction. The **Translate
 destiny menu** button is available in both editions and is exempt from the limit.
 It translates the separate character-creation destiny project, not the full mods
@@ -225,8 +301,10 @@ CLI commands remain available through `python entry.py`; the main window opens
 with no arguments, and `--advanced` opens the detailed editor.
 
 The edition is embedded at build time, not selected in user preferences. Builds
-default to Friends. The shared translation entry point enforces the limit for
-the main window, editor and CLI before requests are sent. A frozen app with
+default to Friends. The shared translation entry point enforces the shared-key limit for
+the main window, editor and CLI before requests are sent. Personal OpenRouter
+credentials bypass the cap only while those same credentials are used for requests.
+A frozen app with
 missing or invalid edition metadata retains the Friends restriction.
 
 [Cost estimates and friends-limit validation](COST_ESTIMATE_VALIDATION.md)

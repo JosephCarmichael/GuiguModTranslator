@@ -1,0 +1,18 @@
+{
+  "result": "passed",
+  "app_version": "1.3.4",
+  "edition": "friends",
+  "zip": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\\u9b3c\u8c37\u516b\u8352\\GuiguModTranslator\\release\\GuiguModTranslator-Friends-1.3.4.zip",
+  "bytes": 49562112,
+  "sha256": "80638ee8c1c93b0a133db8d2542fdafcf540dead952a516516ba5ce67ec6ec20",
+  "checks": [
+    "ZIP integrity",
+    "tested EXE matches ZIP",
+    "personal credential files excluded",
+    "shared credential unchanged",
+    "access dialog and encryption embedded",
+    "frozen personal-key translation and shared cap restoration passed",
+    "launch repair retained",
+    "unchanged live-verified 1.2.3 translation DLL"
+  ]
+}

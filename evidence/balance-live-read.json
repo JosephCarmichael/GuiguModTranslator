@@ -1,0 +1,10 @@
+{
+  "result": "passed",
+  "read_only": true,
+  "remaining_usd": "0.566312218",
+  "display": [
+    "Balance: ~41.92p",
+    "OpenRouter key: $0.5663 remaining \u00b7 GBP estimate"
+  ],
+  "source": "OpenRouter current-key allowance; not an account-credit query"
+}

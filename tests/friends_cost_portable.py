@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix='Friends cost portable ') as folder:
     env.pop('PYTHONHOME', None)
     result = subprocess.run([str(exe), 'translate', str(temp)], cwd=temp, env=env, timeout=60)
     error = (temp/'data/last-error.log').read_text(encoding='utf-8')
-    assert result.returncode == 1 and '0.5p' in error and saved.read_bytes() == original
+    assert result.returncode == 1 and '5p' in error and saved.read_bytes() == original
     subprocess.run([str(exe), '--game', str(ROOT.parent), 'scan-destinies', '--output', str(temp/'destinies')],
                    cwd=temp, env=env, timeout=120, check=True)
     destiny = json.loads((temp/'destinies/project.json').read_text(encoding='utf-8'))

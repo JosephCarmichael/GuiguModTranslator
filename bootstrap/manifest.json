@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "melonloader_version": "0.5.4",
+  "unity_version": "2020.3.9",
+  "assets": {
+    "MelonLoader.x64.zip": {
+      "sha256": "f5e552d66ddfe4f9bb6c8b727d9ed762ae62fa5dedb534763f1b17f6ac6ee016",
+      "url": "https://github.com/LavaGang/MelonLoader/releases/download/v0.5.4/MelonLoader.x64.zip"
+    },
+    "Cpp2IL.zip": {
+      "sha256": "3be4ca397a412b60c592d11a5f38eef188dc91e6eaf2e1bdc362c19e275f8756",
+      "url": "https://github.com/SamboyCoding/Cpp2IL/releases/download/2022.1.0-pre-release.3/Cpp2IL-2022.1.0-pre-release.3-Windows-Netframework472.zip"
+    },
+    "Unhollower.zip": {
+      "sha256": "b7d6b019e4c9a8020683fea94190423ee1e4235b04bfa85bf085dfb5fef51d2a",
+      "url": "https://github.com/knah/Il2CppAssemblyUnhollower/releases/download/v0.4.18.0/Il2CppAssemblyUnhollower.0.4.18.0.zip"
+    },
+    "UnityDependencies.zip": {
+      "sha256": "740c7dab7188cda542def5a3ba86a76d60c81dfadfbb1b92d46e030471a5c2ea",
+      "url": "https://raw.githubusercontent.com/LavaGang/Unity-Runtime-Libraries/master/2020.3.9.zip"
+    }
+  }
+}

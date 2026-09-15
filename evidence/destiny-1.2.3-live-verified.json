@@ -1,0 +1,12 @@
+{
+  "version": "1.2.3",
+  "process_id": 75164,
+  "inventory_process_id": 75164,
+  "loaded_destinies": 309,
+  "fields": 867,
+  "untranslated_fields": 0,
+  "unresolved_fields": 2,
+  "errors": [],
+  "user_confirmed_working": true,
+  "loader_sha256": "3c9e0c3c6b8bd1cfbba12ed2f1f0c960449cb8e7234017bdac0c4d01a973cd4d"
+}

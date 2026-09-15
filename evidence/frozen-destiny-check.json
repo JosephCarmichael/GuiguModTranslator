@@ -1,0 +1,12 @@
+{
+  "result": "passed",
+  "texts": 83,
+  "missing_texts": 0,
+  "checks": [
+    "copied standalone exe",
+    "isolated data folder",
+    "no Python in PATH",
+    "real destiny table scan",
+    "report and translation project saved"
+  ]
+}

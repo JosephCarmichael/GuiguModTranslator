@@ -4,30 +4,49 @@ import queue
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
-from app_config import APP_DIR, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
+from app_config import APP_DIR, APP_VERSION, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
 from app_config import BATCH_SIZE_CHOICES, translation_batch_size, is_friends_build
 from extractor import APP, atomic_json, discover
 from mod_workflow import run_job
 from installer import installation_message
 from translation_cost import estimate_mod, format_pence, full_translation_allowed, PRICING_NOTE
+from app_config import bulk_price_pence
+from bulk_translation import plan_bulk, money, run_bulk, bulk_summary
 
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title('Guigu Mod Translator')
-        self.geometry('800x700')
-        self.minsize(650, 650)
+        self.title('Guigu Mod Translator ' + APP_VERSION)
+        self.geometry('800x800')
+        self.minsize(650, 770)
         self.configure(bg='#f5f6fa')
         self.game = installed_game()
         self.mods = {}
         self.estimates = {}
         self.estimate_stop = threading.Event()
         self.friends = is_friends_build()
-        self.title('Guigu Mod Translator — ' + ('Friends' if self.friends else 'Personal'))
+        self.title('Guigu Mod Translator ' + APP_VERSION + ' — ' + ('Friends' if self.friends else 'Personal'))
         self.busy = False
+        self.bulk_running = False
+        self.bulk_price = tk.IntVar(value=bulk_price_pence())
+        self.bulk_price_label = tk.StringVar()
+        self.bulk_note = tk.StringVar()
+        self.price_save_timer = None
+        self.setting_up = False
+        self.setup_ready = False
+        self.collecting_logs = False
+        self.log_status = tk.StringVar()
+        self.access_note = tk.StringVar()
+        self.balance_label = tk.StringVar(value='Balance: checking…')
+        self.balance_detail = tk.StringVar()
+        self.balance_profile = {}
+        self.balance_refreshing = False
+        self.next_balance_refresh = 0
+        self.personal_key = False
         self.events = queue.Queue()
         self.stop = threading.Event()
         self.folder = None
@@ -50,6 +69,9 @@ class App(tk.Tk):
         options = tk.Menu(menu, tearoff=False)
         options.add_command(label='Choose game folder…', command=self.choose_game)
         options.add_command(label='Refresh mods', command=self.refresh)
+        options.add_command(label='Check game setup', command=self.start_setup)
+        options.add_command(label='Collect logs', command=self.collect_logs)
+        options.add_command(label='API key…', command=self.api_key_settings)
         options.add_command(label='Find untranslated destinies', command=self.find_destinies)
         options.add_command(label='About cost estimates…', command=lambda: messagebox.showinfo('Cost estimates', PRICING_NOTE))
         options.add_separator()
@@ -61,8 +83,21 @@ class App(tk.Tk):
         self.configure(menu=menu)
         body = ttk.Frame(self, padding=(24, 16))
         body.pack(fill='both', expand=True)
+        balance_header = ttk.Frame(body)
+        balance_header.pack(fill='x', pady=(0, 8))
+        balance_left = ttk.Frame(balance_header)
+        balance_left.pack(side='left', fill='x', expand=True)
+        ttk.Label(balance_left, textvariable=self.balance_label, font=('Segoe UI', 13, 'bold'), foreground='#17213c').pack(anchor='w')
+        ttk.Label(balance_left, textvariable=self.balance_detail, style='Sub.TLabel', wraplength=420).pack(anchor='w')
+        key_controls = ttk.Frame(balance_header)
+        key_controls.pack(side='right', padx=(8, 0))
+        self.api_key_button = ttk.Button(key_controls, text='API key…', command=self.api_key_settings)
+        self.api_key_button.pack(anchor='e')
+        from api_key_dialog import help_link
+        self.api_help_button = help_link(key_controls, self)
+        self.api_help_button.pack(anchor='e')
         ttk.Label(body, text='Translate your mods', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(body, text='Choose a mod. Translate and install it for your next game launch.', style='Sub.TLabel').pack(anchor='w', pady=(6, 20))
+        ttk.Label(body, text='Choose a mod. Translate and install it for your next game launch.', style='Sub.TLabel').pack(anchor='w', pady=(6, 12))
         ttk.Label(body, text='Search mods', style='Sub.TLabel').pack(anchor='w')
         ttk.Entry(body, textvariable=self.search, font=('Segoe UI', 11)).pack(fill='x', pady=(5, 12))
         self.search.trace_add('write', lambda *_: self.render())
@@ -80,9 +115,6 @@ class App(tk.Tk):
         self.list.pack(side='left', fill='both', expand=True)
         scroll.pack(side='right', fill='y')
         self.list.bind('<<TreeviewSelect>>', self.selected)
-        ttk.Label(body, text=('Friends: full mods up to 0.5p (£0.005). Destiny menu always available.' if self.friends else
-                             'DeepSeek V4.1 Flash · estimates in pence (p) · no personal edition limit.'),
-                  style='Sub.TLabel', wraplength=580).pack(anchor='w', pady=(5, 0))
         self.choose = ttk.Button(body, text='Choose game folder…', command=self.choose_game)
         speed = ttk.Frame(body)
         speed.pack(fill='x', pady=(12, 0))
@@ -100,28 +132,186 @@ class App(tk.Tk):
         self.destiny_button.pack(side='left')
         self.translate_destiny_button = ttk.Button(destiny_actions, text='Translate destiny menu', command=self.translate_destinies)
         self.translate_destiny_button.pack(side='left', padx=(10, 0))
+        bulk = ttk.Frame(body)
+        bulk.pack(fill='x', pady=(10, 0))
+        self.bulk_button = ttk.Button(bulk, text='Translate all', command=self.translate_all)
+        self.bulk_button.pack(side='left')
+        self.price_slider = tk.Scale(bulk, from_=5, to=200, resolution=5, orient='horizontal',
+                                     variable=self.bulk_price, command=self.change_bulk_price,
+                                     showvalue=False, highlightthickness=0, bg='#f5f6fa', bd=0)
+        self.price_slider.pack(side='left', fill='x', expand=True, padx=10)
+        ttk.Label(bulk, textvariable=self.bulk_price_label, width=22).pack(side='right')
+        ttk.Label(body, textvariable=self.bulk_note, style='Sub.TLabel', wraplength=580).pack(anchor='w', pady=(3, 0))
         self.action = ttk.Button(body, text='Translate and install', style='Action.TButton', command=self.translate)
-        self.action.pack(fill='x', pady=(20, 12))
+        self.action.pack(fill='x', pady=(12, 8))
         self.action.state(['disabled'])
         self.bar = ttk.Progressbar(body, mode='indeterminate')
         self.status_label = ttk.Label(body, textvariable=self.status, wraplength=720)
         self.status_label.pack(anchor='w', pady=(5, 8))
         body.bind('<Configure>', lambda event: self.status_label.configure(wraplength=max(240, event.width - 60)))
         self.result_button = ttk.Button(body, text='Open translations', command=self.open_folder)
+        self.setup_retry = ttk.Button(body, text='Retry setup', command=self.start_setup)
+        self.steam_install = ttk.Button(body, text='Install game in Steam', command=lambda: os.startfile('steam://install/1468810'))
+        footer = ttk.Frame(body)
+        footer.pack(fill='x')
+        self.logs_button = ttk.Button(footer, text='Collect logs', command=self.collect_logs)
+        self.logs_button.pack(side='left')
+        ttk.Label(footer, textvariable=self.log_status, style='Sub.TLabel', wraplength=340).pack(side='left', padx=8)
+        self.play_button = ttk.Button(footer, text='Launch game', command=self.play)
+        self.play_button.pack(side='right')
         ttk.Label(body, text='Installs in-game text translations. Restart the game after changes.', style='Sub.TLabel').pack(anchor='w', pady=(6, 0))
         self.protocol('WM_DELETE_WINDOW', self.close)
         self.after(100, self.poll)
-        self.after(10, self.refresh)
+        self.after(10, self.start_setup)
+        self.after(5000, self.check_game_install)
+        self.refresh_access()
+        self.after(50, self.balance_tick)
+
+    def refresh_access(self):
+        from app_config import service_profile
+        try:
+            self.balance_profile = service_profile()
+            self.personal_key = self.balance_profile.get('personal_key', False)
+            access_error = False
+        except (OSError, ValueError):
+            self.personal_key, access_error = False, True
+            self.balance_profile = {}
+        if access_error:
+            note = 'API key needs attention. Open API key to choose translation access.'
+        elif self.personal_key:
+            note = 'Personal OpenRouter key · uses your credit · no app cost cap.'
+        elif self.friends:
+            note = ''
+        else:
+            note = 'DeepSeek V4.1 Flash · estimates in pence (p) · no personal edition limit.'
+        self.access_note.set(note)
+        self.next_balance_refresh = 0
+        self.update_balance_display()
+        self.render()
+
+    def update_balance_display(self):
+        from translation_balance import tracker, balance_text
+        text, detail = balance_text(tracker().snapshot(self.balance_profile))
+        self.balance_label.set(text)
+        self.balance_detail.set(detail)
+
+    def balance_tick(self):
+        self.update_balance_display()
+        if not self.balance_refreshing and time.monotonic() >= self.next_balance_refresh:
+            profile = dict(self.balance_profile)
+            self.balance_refreshing = True
+            self.next_balance_refresh = time.monotonic() + 30
+            def refresh():
+                from translation_balance import tracker
+                try:
+                    tracker().refresh(profile)
+                finally:
+                    self.events.put(('balance_refreshed', None))
+            threading.Thread(target=refresh, daemon=True).start()
+        self.after(500, self.balance_tick)
+
+    def api_key_settings(self):
+        if self.busy and not self.setting_up:
+            self.status.set('Finish or cancel the current operation before changing API keys.')
+            return
+        from api_key_dialog import ApiKeyDialog
+        def changed(message):
+            self.refresh_access()
+            self.status.set(message)
+        return ApiKeyDialog(self, changed)
+
+    def collect_logs(self):
+        # Available during a stuck first launch, a failed setup, or translation.
+        # Collection has its own state and never cancels those operations.
+        if self.collecting_logs:
+            return
+        self.collecting_logs = True
+        self.logs_button.state(['disabled'])
+        self.log_status.set('Collecting…')
+        snapshot = {'setup_in_progress': self.setting_up, 'busy': self.busy,
+                    'setup_ready': self.setup_ready, 'message': self.status.get()}
+        game, handle = self.game, self.winfo_id()
+        def job():
+            from diagnostics import collect_logs
+            try:
+                self.events.put(('logs_done', collect_logs(game, snapshot, handle)))
+            except Exception as exc:
+                self.events.put(('logs_error', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
+
+    def check_game_install(self):
+        if not self.game and not self.busy:
+            self.game = installed_game()
+            if self.game:
+                self.choose.pack_forget()
+                self.steam_install.pack_forget()
+                self.start_setup()
+        self.after(5000, self.check_game_install)
+
+    def start_setup(self):
+        if self.busy:
+            return
+        if not self.game:
+            self.game = installed_game()
+        if not self.game:
+            self.refresh()
+            return
+        self.setting_up = self.busy = True
+        self.setup_ready = False
+        self.update_bulk_controls()
+        self.stop.clear()
+        self.estimate_stop.set()
+        self.setup_retry.pack_forget()
+        self.result_button.pack_forget()
+        self.parallel.configure(state='disabled')
+        self.batch_choice.configure(state='disabled')
+        self.action.configure(text='Cancel setup')
+        self.action.state(['!disabled'])
+        self.bar.stop()
+        self.bar.configure(mode='determinate', maximum=100, value=0)
+        self.bar.pack(before=self.action, fill='x', pady=(10, 0))
+        def job():
+            from game_setup import ensure_setup
+            try:
+                result = ensure_setup(self.game, lambda percent, message: self.events.put(('setup_progress', (percent, message))), self.stop.is_set)
+                self.events.put(('setup_done', result))
+            except PermissionError as exc:
+                self.events.put(('setup_permission', str(exc)))
+            except Exception as exc:
+                self.events.put(('setup_error', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
+
+    def play(self):
+        if self.busy or not self.game:
+            return
+        if not self.setup_ready:
+            self.start_setup()
+            return
+        from game_setup import launch_game, game_processes
+        try:
+            if game_processes(self.game):
+                self.status.set('The game is already open. Save and close it before launching to apply new translations.')
+            else:
+                launch_game(self.game)
+                self.status.set('Launching Tale of Immortal…')
+        except Exception as exc:
+            self.status.set(str(exc))
 
     def refresh(self):
         if self.busy:
             return
         if not self.game:
-            self.status.set('Choose your Tale of Immortal game folder to get started.')
+            self.status.set('Install Tale of Immortal in Steam, then click Retry setup. If it is already installed, choose its folder.')
             self.choose.pack(before=self.action, fill='x', pady=10)
+            self.setup_retry.pack(before=self.action, fill='x', pady=5)
+            self.steam_install.pack(before=self.action, fill='x', pady=5)
+            return
+        if not self.setup_ready:
+            self.start_setup()
             return
         self.status.set('Finding your mods…')
         self.busy = True
+        self.update_bulk_controls()
         self.action.state(['disabled'])
         def scan():
             try:
@@ -142,14 +332,20 @@ class App(tk.Tk):
         self.game = Path(path)
         save_preferences(game=str(self.game))
         self.choose.pack_forget()
-        self.refresh()
+        self.steam_install.pack_forget()
+        self.setup_ready = False
+        self.start_setup()
 
     def find_destinies(self):
         if self.busy or not self.game:
             return
+        if not self.setup_ready:
+            self.start_setup()
+            return
         from destinies import PROJECT_ID, scan_destinies, destiny_report
         from installer import install_detector
         self.busy = True
+        self.update_bulk_controls()
         self.stop.clear()
         self.action.state(['disabled'])
         self.folder = APP / 'projects' / PROJECT_ID
@@ -168,6 +364,9 @@ class App(tk.Tk):
 
     def translate_destinies(self):
         if self.busy or not self.game:
+            return
+        if not self.setup_ready:
+            self.start_setup()
             return
         from destinies import PROJECT_ID, destiny_mod
         self.mods[PROJECT_ID] = destiny_mod(self.game)
@@ -202,19 +401,19 @@ class App(tk.Tk):
         text = 'Calculating…' if estimate is None else ('Unavailable' if estimate.get('error') else format_pence(estimate))
         if ident == PROJECT_ID:
             access = 'Always available'
-        elif not self.friends:
+        elif not self.friends or self.personal_key:
             access = 'Available'
         elif estimate is None:
             access = 'Checking cost…'
         elif estimate.get('error') or not estimate.get('complete'):
             access = 'Estimate unavailable'
         else:
-            access = 'Available' if full_translation_allowed(estimate) else 'Over 0.5p limit'
+            access = 'Available' if full_translation_allowed(estimate) else 'Over 5p limit'
         return text, access
 
     def can_translate(self, ident):
         from destinies import PROJECT_ID
-        return ident == PROJECT_ID or not self.friends or full_translation_allowed(self.estimates.get(ident))
+        return ident == PROJECT_ID or not self.friends or self.personal_key or full_translation_allowed(self.estimates.get(ident))
 
     def render(self):
         selected = self.list.selection()
@@ -228,10 +427,11 @@ class App(tk.Tk):
         self.selected()
 
     def selected(self, _=None):
+        self.update_bulk_controls()
         if self.busy:
             return
         selection = self.list.selection()
-        self.action.state(['!disabled'] if selection and self.can_translate(selection[0]) else ['disabled'])
+        self.action.state(['!disabled'] if self.setup_ready and selection and self.can_translate(selection[0]) else ['disabled'])
         if selection:
             self.folder = APP / 'projects' / selection[0]
             if selection[0] != self.current_selection:
@@ -245,8 +445,12 @@ class App(tk.Tk):
     def translate(self):
         if self.busy:
             self.stop.set()
+            self.update_bulk_controls()
             self.action.state(['disabled'])
-            self.status.set('Stopping new requests. Finishing requests already sent and saving progress…')
+            self.status.set('Stopping setup safely…' if self.setting_up else 'Stopping new requests. Finishing requests already sent and saving progress…')
+            return
+        if not self.setup_ready:
+            self.start_setup()
             return
         selection = self.list.selection()
         if not selection:
@@ -257,6 +461,7 @@ class App(tk.Tk):
         mod = self.mods[selection[0]]
         self.folder = APP / 'projects' / mod['id']
         self.busy = True
+        self.update_bulk_controls()
         concurrency = self.concurrency.get()
         batch_size = self.batch_size.get()
         self.parallel.configure(state='disabled')
@@ -278,12 +483,88 @@ class App(tk.Tk):
 
     def finish(self):
         self.busy = False
+        self.bulk_running = False
+        self.next_balance_refresh = 0
         self.parallel.configure(state='readonly')
         self.batch_choice.configure(state='readonly')
         self.bar.stop()
+        self.bar.configure(mode='indeterminate', value=0)
         self.bar.pack_forget()
         self.action.configure(text='Translate and install')
         self.selected()
+
+    def update_bulk_controls(self):
+        self.bulk_price_label.set('Up to ' + money(self.bulk_price.get()) + ' per mod')
+        if self.bulk_running:
+            self.bulk_button.configure(text='Cancel all')
+            self.bulk_button.state(['disabled'] if self.stop.is_set() else ['!disabled'])
+            self.price_slider.configure(state='disabled')
+            return
+        self.bulk_button.configure(text='Translate all')
+        self.price_slider.configure(state='disabled' if self.busy else 'normal')
+        plan = plan_bulk(list(self.mods.values()), self.estimates, self.bulk_price.get(),
+                         limited=self.friends and not self.personal_key)
+        if plan['pending']:
+            note = f'Calculating prices for {plan["pending"]} mods…'
+        else:
+            note = f'{len(plan["mods"])} matching mods · ~{money(plan["total_pence"])} combined estimate'
+            if plan['excluded']:
+                note += f' · {plan["excluded"]} excluded'
+        self.bulk_note.set(note + '. Price is per mod.')
+        ready = self.setup_ready and not self.busy and not plan['pending'] and bool(plan['mods'])
+        self.bulk_button.state(['!disabled'] if ready else ['disabled'])
+
+    def change_bulk_price(self, _=None):
+        self.update_bulk_controls()
+        if self.price_save_timer is not None:
+            self.after_cancel(self.price_save_timer)
+        self.price_save_timer = self.after(350, self.save_bulk_price)
+
+    def save_bulk_price(self):
+        self.price_save_timer = None
+        try:
+            save_preferences(bulk_price_pence=self.bulk_price.get())
+        except OSError as exc:
+            self.status.set('Could not save the price filter: ' + str(exc))
+
+    def translate_all(self):
+        if self.bulk_running:
+            self.stop.set()
+            self.action.state(['disabled'])
+            self.update_bulk_controls()
+            self.status.set('Stopping the queue. Finishing requests already sent and saving progress…')
+            return
+        if self.busy or not self.setup_ready:
+            return
+        limit = self.bulk_price.get()
+        plan = plan_bulk(list(self.mods.values()), self.estimates, limit,
+                         limited=self.friends and not self.personal_key)
+        if plan['pending'] or not plan['mods']:
+            self.update_bulk_controls()
+            return
+        self.busy = self.bulk_running = True
+        self.stop.clear()
+        self.parallel.configure(state='disabled')
+        self.batch_choice.configure(state='disabled')
+        self.action.configure(text='Cancel all')
+        self.action.state(['!disabled'])
+        self.result_button.pack_forget()
+        self.bar.stop()
+        self.bar.configure(mode='determinate', maximum=100, value=0)
+        self.bar.pack(before=self.action, fill='x', pady=(10, 0))
+        self.update_bulk_controls()
+        concurrency, batch_size, game = self.concurrency.get(), self.batch_size.get(), self.game
+        self.folder = APP / 'projects'
+        self.status.set(f'Starting {len(plan["mods"])} mods, cheapest first. Saved translations will be reused.')
+        def job():
+            try:
+                result = run_bulk(plan['mods'], APP / 'projects', limit,
+                                  lambda p, m: self.events.put(('bulk_progress', (p, m))),
+                                  self.stop.is_set, game=game, concurrency=concurrency, batch_size=batch_size)
+                self.events.put(('bulk_result', result))
+            except Exception as exc:
+                self.events.put(('error', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
 
     def change_concurrency(self, _=None):
         try:
@@ -306,8 +587,61 @@ class App(tk.Tk):
                 kind, value = self.events.get_nowait()
             except queue.Empty:
                 break
+            if kind == 'balance_refreshed':
+                self.balance_refreshing = False
+                self.update_balance_display()
+                continue
+            if kind in ('logs_done', 'logs_error'):
+                self.collecting_logs = False
+                self.logs_button.state(['!disabled'])
+                if kind == 'logs_error':
+                    self.log_status.set('Could not collect logs. Click to retry.')
+                elif value['copied'] and value['path']:
+                    self.log_status.set('Copied · Guigu-Logs.txt saved beside EXE')
+                elif value['copied']:
+                    self.log_status.set('Logs copied — paste to send them')
+                elif value['path']:
+                    self.log_status.set('Saved Guigu-Logs.txt beside EXE')
+                else:
+                    path = filedialog.asksaveasfilename(title='Save collected logs', initialfile='Guigu-Logs.txt',
+                                                       defaultextension='.txt', filetypes=[('Text report', '*.txt')])
+                    try:
+                        if path:
+                            Path(path).write_text(value['text'], encoding='utf-8-sig')
+                        self.log_status.set('Logs saved.' if path else 'Logs not saved. Click to retry.')
+                    except OSError:
+                        self.log_status.set('Could not save logs. Click to retry.')
+                continue
             if kind == 'progress':
                 latest = value
+                continue
+            if kind in ('setup_progress', 'bulk_progress'):
+                percent, message = value
+                self.bar.configure(value=percent)
+                latest = f'{percent:.0f}% · {message}'
+                continue
+            if kind.startswith('setup_'):
+                latest = None
+                self.setting_up = False
+                self.finish()
+                if kind == 'setup_done':
+                    if value.get('game'):
+                        self.game = Path(value['game'])
+                    self.setup_ready = True
+                    self.refresh()
+                else:
+                    self.status.set(value)
+                    self.setup_retry.pack(before=self.action, fill='x', pady=5)
+                    if kind == 'setup_permission':
+                        from game_setup import restart_elevated
+                        self.status.set('Windows needs permission to set up this game. Requesting access…')
+                        self.update_idletasks()
+                        try:
+                            restart_elevated(self.game)
+                            self.destroy()
+                            return
+                        except Exception as exc:
+                            self.status.set(str(exc))
                 continue
             if kind == 'estimate':
                 generation, ident, estimate = value
@@ -319,6 +653,12 @@ class App(tk.Tk):
                         self.selected()
                 continue
             latest = None
+            if kind == 'bulk_result':
+                self.finish()
+                self.folder = APP / 'projects'
+                self.status.set(bulk_summary(value))
+                self.result_button.pack(before=self.action, pady=(10, 0))
+                continue
             if kind == 'mods':
                 self.busy = False
                 from destinies import destiny_mod
@@ -387,6 +727,9 @@ class App(tk.Tk):
     def install_saved(self):
         if self.busy or not self.list.selection():
             return
+        if not self.setup_ready:
+            self.start_setup()
+            return
         from extractor import read_json
         from installer import install
         selection = self.list.selection()[0]
@@ -414,9 +757,12 @@ class App(tk.Tk):
             self.status.set('Could not remove translations: ' + str(exc))
 
     def close(self):
+        if self.collecting_logs:
+            self.log_status.set('Finishing log collection. Close again when done.')
+            return
         if self.busy:
             self.stop.set()
-            self.status.set('Waiting for requests already sent to finish and save. Close again when stopped.')
+            self.status.set('Stopping setup safely. Close again when stopped.' if self.setting_up else 'Waiting for requests already sent to finish and save. Close again when stopped.')
             return
         self.estimate_stop.set()
         self.destroy()

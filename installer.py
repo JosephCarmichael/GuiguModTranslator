@@ -30,6 +30,15 @@ def preflight(game, runtime_dir=None):
     if any(not (game / p).is_file() for p in required):
         raise ValueError('Choose a Tale of Immortal installation with its bundled MelonLoader 0.5.x. '
                          'Launch the game once to generate its managed assemblies.')
+    data = runtime_payload(runtime_dir)
+    # These are build ABI requirements, not hashes of proprietary game files.
+    if melon_version(game)[:2] != (0, 5):
+        raise ValueError('This loader targets the game’s bundled MelonLoader 0.5.x; this installation uses another version.')
+    return data
+
+
+def runtime_payload(runtime_dir=None):
+    """Validate our own DLL before first-launch game assemblies exist."""
     runtime = Path(runtime_dir) if runtime_dir else RESOURCE_DIR / 'runtime'
     source = runtime / LOADER
     if not source.is_file() or not (runtime / 'manifest.json').is_file():
@@ -38,16 +47,17 @@ def preflight(game, runtime_dir=None):
     manifest = json.loads((runtime / 'manifest.json').read_text(encoding='utf-8'))
     if not data.startswith(b'MZ') or hashlib.sha256(data).hexdigest() != manifest['sha256']:
         raise ValueError('The bundled translation loader failed its integrity check.')
-    # These are build ABI requirements, not hashes of proprietary game files.
+    return data
+
+
+def melon_version(game):
     import dnfile
-    assembly = dnfile.dnPE(str(game / 'MelonLoader/MelonLoader.dll'))
+    assembly = dnfile.dnPE(str(Path(game) / 'MelonLoader/MelonLoader.dll'))
     try:
         row = assembly.net.mdtables.Assembly.rows[0]
-        if (row.MajorVersion, row.MinorVersion) != (0, 5):
-            raise ValueError('This loader targets the game’s bundled MelonLoader 0.5.x; this installation uses another version.')
+        return row.MajorVersion, row.MinorVersion, row.BuildNumber
     finally:
         assembly.close()
-    return data
 
 
 def atomic_bytes(path, data):

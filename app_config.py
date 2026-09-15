@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 RESOURCE_DIR = Path(__file__).resolve().parent
+APP_VERSION = '1.3.7'
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else RESOURCE_DIR
 CONCURRENCY_CHOICES = (1, 4, 8, 16, 32, 64, 128)
 DEFAULT_CONCURRENCY = 16
@@ -43,6 +44,11 @@ def translation_batch_size():
     return value if type(value) is int and value in BATCH_SIZE_CHOICES else DEFAULT_BATCH_SIZE
 
 
+def bulk_price_pence():
+    value = preferences().get('bulk_price_pence', 5)
+    return value if type(value) is int and 5 <= value <= 200 else 5
+
+
 def save_preferences(**changes):
     from extractor import atomic_json
     value = preferences()
@@ -61,24 +67,37 @@ def data_dir():
     return result
 
 def service_profile():
+    from api_access import selected_key, is_personal_key
+    selected = selected_key()
     local = data_dir() / 'service.json'
     bundled = RESOURCE_DIR / 'bundled_service.json'
     path = local if local.is_file() else bundled
-    if not path.is_file():
-        raise ValueError('Translation access is not configured. Please obtain a configured copy of the app.')
-    profile = json.loads(path.read_text(encoding='utf-8'))
-    key = str(profile.get('api_key', '')).strip()
+    if selected is None:
+        if not path.is_file():
+            raise ValueError('Translation access is not configured. Please obtain a configured copy of the app.')
+        profile = json.loads(path.read_text(encoding='utf-8'))
+        key = str(profile.get('api_key', '')).strip()
+    else:
+        key = selected
     if not key:
         raise ValueError('The translation key is missing. Please obtain an updated copy of the app.')
     if key.startswith('sk-or-'):
         return {'api_key': key, 'endpoint': 'https://openrouter.ai/api/v1/chat/completions',
-                'model': 'deepseek/deepseek-v4.1-flash', 'provider': 'OpenRouter'}
+                'model': 'deepseek/deepseek-v4.1-flash', 'provider': 'OpenRouter',
+                'personal_key': is_personal_key(key)}
     return {'api_key': key, 'endpoint': 'https://api.deepseek.com/v1/chat/completions',
             'model': 'deepseek-flash', 'provider': 'DeepSeek'}
 
 def installed_game():
     saved = data_dir() / 'preferences.json'
     candidates = []
+    pending_repair = data_dir() / 'launch-repair-pending.json'
+    if pending_repair.is_file():
+        try:
+            repair = json.loads(pending_repair.read_text(encoding='utf-8'))
+            candidates.extend(Path(repair[key]) for key in ('target', 'source'))
+        except (ValueError, OSError, KeyError, TypeError):
+            pass
     if saved.is_file():
         try:
             candidates.append(Path(json.loads(saved.read_text(encoding='utf-8')).get('game', '')))

@@ -16,6 +16,16 @@ namespace GuiguModTranslation
         private static readonly Regex PresentationParts = new Regex(@"(<(?:/?(?:color|size|b|i|u|s|r|g|alpha|align|font|sprite|br)\b[^<>\r\n]*|\#[0-9a-f]{3,8})>|\r\n|\r|\n)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         public int Count { get { return exact.Count; } }
 
+        public object Diagnose(string text)
+        {
+            Func<string, string> normal = s => s.Replace("\\r\\n", "\n").Replace("\\n", "\n").Replace("\r\n", "\n").Replace("\r", "\n");
+            string candidate = exact.Keys.FirstOrDefault(k => normal(k) == normal(text));
+            return new { source_length = text.Length, source_prefix = text.Take(8).Select(c => (int)c).ToArray(),
+                exact_match = exact.ContainsKey(text), normalized_match = candidate != null,
+                candidate_length = candidate == null ? -1 : candidate.Length,
+                candidate_prefix = candidate == null ? new int[0] : candidate.Take(8).Select(c => (int)c).ToArray() };
+        }
+
         public TranslationCatalog(Dictionary<string, string> entries)
         {
             exact = new Dictionary<string, string>(entries, StringComparer.Ordinal);

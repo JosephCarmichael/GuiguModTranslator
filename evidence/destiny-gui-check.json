@@ -1,0 +1,12 @@
+{
+  "result": "passed",
+  "missing_texts": 0,
+  "checks": [
+    "real Windows Tk scan button",
+    "real mod and runtime scan",
+    "destiny project selected",
+    "translate button enabled",
+    "restart instructions",
+    "saved report"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "result": "passed",
+  "checks": [
+    "5p default and \u00a32 slider maximum",
+    "per-mod inclusive matching and combined estimate",
+    "unknown prices excluded",
+    "waits for estimates",
+    "all mods independent of search",
+    "cheapest first",
+    "progress and safe cancellation",
+    "price frozen during queue",
+    "shared cap respected",
+    "saved slider preference",
+    "minimum-window layout"
+  ],
+  "limits": "Fixture mod jobs; no paid requests or game changes."
+}

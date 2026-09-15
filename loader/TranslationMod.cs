@@ -12,7 +12,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-[assembly: MelonInfo(typeof(GuiguModTranslation.TranslationMod), "Guigu Mod Translation", "1.2.1", "GuiguModTranslator")]
+[assembly: MelonInfo(typeof(GuiguModTranslation.TranslationMod), "Guigu Mod Translation", "1.2.3", "GuiguModTranslator")]
 [assembly: MelonGame(null, null)]
 
 namespace GuiguModTranslation
@@ -43,7 +43,7 @@ namespace GuiguModTranslation
                 {
                     byte[] bytes = File.ReadAllBytes(file);
                     using (var sha = SHA256.Create()) storeHash = BitConverter.ToString(sha.ComputeHash(bytes)).Replace("-", "").ToLowerInvariant();
-                    var store = json.Deserialize<InstalledStore>(Encoding.UTF8.GetString(bytes));
+                    var store = InstalledTranslations.Deserialize(Encoding.UTF8.GetString(bytes));
                     if (store.format != "guigu-installed-v1" || store.mods == null) throw new InvalidDataException("Unknown installed dictionary format.");
                     var entries = InstalledTranslations.Resolve(store,
                         path => Directory.Exists(path) || File.Exists(path), out conflictsResolved);
@@ -118,7 +118,7 @@ namespace GuiguModTranslation
         {
             try
             {
-                WriteJson("runtime-status.json", new { version = "1.2.1", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
+                WriteJson("runtime-status.json", new { version = "1.2.3", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
                     loaded_at_utc = DateTime.UtcNow.ToString("o"), entries = catalog.Count, hits, conflicts_resolved = conflictsResolved, store_sha256 = storeHash, hooks, errors });
                 WriteDestinyInventory();
             }
@@ -137,7 +137,7 @@ namespace GuiguModTranslation
             var objects = new List<GameObject>();
             try
             {
-                var samples = json.Deserialize<Dictionary<string, string>>(File.ReadAllText(Path.Combine(directory, "probe-request.json")));
+                var samples = InstalledTranslations.ReadJson<Dictionary<string, string>>(File.ReadAllText(Path.Combine(directory, "probe-request.json")));
                 var results = new List<object>();
                 foreach (var sample in samples)
                 {
@@ -150,7 +150,7 @@ namespace GuiguModTranslation
                     results.Add(new { source = sample.Key, expected = sample.Value, ugui = text.text, tmp = property, tmp_settext = tmp.text,
                         passed = text.text == sample.Value && property == sample.Value && tmp.text == sample.Value });
                 }
-                WriteJson("probe-result.json", new { version = "1.2.1", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
+                WriteJson("probe-result.json", new { version = "1.2.3", process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
                     entries = catalog.Count, hooks, errors, results, destinies = ProbeDestinyLocalization() });
             }
             catch (Exception error) { WriteJson("probe-result.json", new { error = error.ToString() }); }

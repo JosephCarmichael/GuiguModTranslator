@@ -13,7 +13,7 @@ INPUT_USD_PER_M = Decimal('0.30')
 OUTPUT_USD_PER_M = Decimal('1.20')
 # ECB EUR cross rates, 2026-09-11 (latest working day at verification).
 USD_TO_GBP = Decimal('0.85815') / Decimal('1.1592')
-FRIENDS_LIMIT_PENCE = Decimal('0.5')  # Half a penny = GBP 0.005.
+FRIENDS_LIMIT_PENCE = Decimal('5')  # Five pence = GBP 0.05.
 ESTIMATE_MARGIN = Decimal('1.30')
 PRICING_NOTE = ('DeepSeek V4.1 Flash peak rates: $0.30 input / $1.20 output per million tokens '
                 '(verified 13 September 2026). GBP conversion: ECB, 11 September 2026. '
@@ -72,15 +72,21 @@ def full_translation_allowed(estimate):
     return bool(estimate and estimate.get('complete') and Decimal(estimate['pence']) <= FRIENDS_LIMIT_PENCE)
 
 
-def enforce_translation_policy(project, batch_size=None):
+def enforce_translation_policy(project, batch_size=None, profile=None):
     if not is_friends_build() or is_destiny_project(project):
+        return
+    if profile is None:
+        from app_config import service_profile
+        profile = service_profile()
+    if profile.get('personal_key'):
         return
     estimate = estimate_project(project, batch_size)
     if not full_translation_allowed(estimate):
         reason = ('Some source files could not be fully read.' if not estimate['complete'] else
                   'The full-mod estimate is ' + format_pence(estimate) + '.')
-        raise PermissionError(reason + ' The friends edition allows full translation only up to '
-                              '0.5p (£0.005). Destiny-menu translation and installing saved translations remain available.')
+        raise PermissionError(reason + ' The shared key allows full translation only up to '
+                              '5p (£0.05). Add your own OpenRouter key in Options > API key to remove this limit. '
+                              'Destiny-menu translation and installing saved translations remain available.')
 
 
 def estimate_mod(mod, game, batch_size=None, stop=None):

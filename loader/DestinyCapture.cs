@@ -175,14 +175,14 @@ namespace GuiguModTranslation
 
         private object ProbeDestinyLocalization()
         {
-            var samples = destinyFields.Where(f => !f.unresolved && TranslationCatalog.HasChinese(f.source)
-                && !TranslationCatalog.HasChinese(f.translated) && f.source != f.translated).ToArray();
+            var samples = destinyFields.Where(f => !f.unresolved && TranslationCatalog.HasChinese(f.source)).ToArray();
             var results = new List<object>();
             foreach (var entry in samples)
             {
                 string actual = GameTool.LS(entry.key);
                 results.Add(new { entry.destiny_id, entry.field, entry.key, entry.source,
-                    expected = entry.translated, actual, passed = actual == entry.translated });
+                    expected = entry.translated, actual, passed = actual == entry.translated && !TranslationCatalog.HasChinese(actual),
+                    diagnostics = entry.missing ? catalog.Diagnose(entry.source) : null });
             }
             return new { destiny_count = destinyCount, fields = destinyFields.Count, samples = results };
         }
@@ -196,6 +196,10 @@ namespace GuiguModTranslation
                 process_id = System.Diagnostics.Process.GetCurrentProcess().Id, captured_at_utc = destinyCapturedAt,
                 destiny_count = destinyCount, fields = destinyFields, observed_untranslated = observed,
                 observation_limit_reached = observed.Length >= 5000 });
+            if (System.IO.File.Exists(System.IO.Path.Combine(directory, "diagnostics-request.json")))
+                WriteJson("runtime-match-diagnostics.json", new { process_id = System.Diagnostics.Process.GetCurrentProcess().Id,
+                    fields = destinyFields.Where(f => f.missing && !f.unresolved).Take(10).Select(f => new {
+                        f.destiny_id, f.field, f.source, diagnostics = catalog.Diagnose(f.source) }).ToArray() });
         }
     }
 }

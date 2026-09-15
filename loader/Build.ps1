@@ -23,7 +23,7 @@ function Compile($name, $sources, $references, $target) {
 }
 Compile 'GuiguModTranslation.dll' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $PSScriptRoot 'TranslationMod.cs'),(Join-Path $PSScriptRoot 'DestinyCapture.cs')) ($refs + $gameRefs) 'library'
 $hash = (Get-FileHash (Join-Path $output 'GuiguModTranslation.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
-[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.2.1';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
+[IO.File]::WriteAllText((Join-Path $output 'manifest.json'), (@{version='1.2.3';sha256=$hash;melonloader='0.5.x'} | ConvertTo-Json))
 if ($Test) {
     Compile 'CatalogTests.exe' @((Join-Path $PSScriptRoot 'TranslationCatalog.cs'),(Join-Path $PSScriptRoot 'InstalledTranslations.cs'),(Join-Path $root 'tests/CatalogTests.cs')) $refs 'exe'
     & (Join-Path $output 'CatalogTests.exe')

@@ -3,7 +3,7 @@ from extractor import extract, validate_translation
 from translation import translate
 from installer import install, preflight
 
-def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size=None):
+def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size=None, max_pence=None):
     from app_config import installed_game
     game = game or installed_game()
     if game is None:
@@ -15,6 +15,13 @@ def run_job(mod, folder, progress, stop, game=None, concurrency=None, batch_size
                extract(mod, folder, lambda _: progress('Reading the mod’s text…'), stop))
     if stop():
         return {'state': 'cancelled', 'count': 0, 'folder': str(folder)}
+    if max_pence is not None:
+        from bulk_translation import within_price
+        from translation_cost import estimate_project
+        estimate = estimate_project(project, batch_size)
+        if not within_price(estimate, max_pence):
+            return {'state': 'skipped', 'reason': 'Current estimate is unavailable or above the selected per-mod price.',
+                    'estimate': estimate, 'folder': str(folder)}
     result = translate(project, folder, progress=progress, stop=stop, include_review=True, concurrency=concurrency, batch_size=batch_size)
     eligible = [u for u in project['units'] if u['category'] != 'technical']
     count = sum(bool(u['translation']) for u in eligible)

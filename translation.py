@@ -189,8 +189,16 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
         gate.acquire(stop)
         code, headers = None, None
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                result = json.loads(response.read().decode('utf-8'))
+            from translation_balance import tracker
+            balance = tracker()
+            with balance.request(profile):
+                if stop():
+                    raise InterruptedError('Translation cancelled')
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    result = json.loads(response.read().decode('utf-8'))
+                # Account for provider-confirmed charges, including billable
+                # responses that require a retry because their text is invalid.
+                balance.record_response(profile, result)
             if result.get('error'):
                 raise ProviderError(provider_error_code(result['error']))
             message = result['choices'][0]
@@ -237,14 +245,15 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     if type(batch_size) is not int or batch_size not in BATCH_SIZE_CHOICES:
         raise ValueError('Entries per request must be one of: ' + ', '.join(map(str, BATCH_SIZE_CHOICES)))
     from translation_cost import enforce_translation_policy
-    enforce_translation_policy(project, batch_size)
+    # Use the same credential snapshot for the spending policy and every request.
+    profile = service_profile()
+    enforce_translation_policy(project, batch_size, profile=profile)
     units = [u for u in project['units'] if not u['translation'] and u['category'] != 'technical'
              and (include_review or u['category'] == 'player_text')]
     existing = sum(bool(u['translation']) for u in project['units'] if u['category'] != 'technical'
                    and (include_review or u['category'] == 'player_text'))
     if not units:
         return {'translated': 0, 'failed': 0, 'total': 0, 'cancelled': False}
-    profile = service_profile()
     terms = json.loads(Path(glossary).read_text(encoding='utf-8-sig')) if glossary else None
     if terms is not None and not isinstance(terms, dict):
         raise ValueError('The glossary must be a JSON dictionary of source terms and translations.')

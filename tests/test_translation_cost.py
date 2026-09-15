@@ -25,17 +25,18 @@ class CostTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
 
-    def test_half_penny_boundary_is_not_fifty_pence_or_rounded(self):
-        self.assertTrue(full_translation_allowed({'pence': '0.5', 'complete': True}))
-        above = {'pence': '0.50000001', 'complete': True}
+    def test_five_pence_boundary_is_not_half_penny_or_rounded(self):
+        self.assertTrue(full_translation_allowed({'pence': '5', 'complete': True}))
+        self.assertTrue(full_translation_allowed({'pence': '3', 'complete': True}))
+        above = {'pence': '5.00000001', 'complete': True}
         self.assertFalse(full_translation_allowed(above))
-        self.assertEqual(format_pence(above), '~0.501p')
+        self.assertEqual(format_pence(above), '~5.001p')
         self.assertFalse(full_translation_allowed({'pence': '0', 'complete': False}))
         self.assertFalse(full_translation_allowed(None))
         self.assertFalse(full_translation_allowed({'error': True}))
 
     def test_full_cost_does_not_shrink_with_saved_progress_or_duplicate_sources(self):
-        p = project('宝剑' * 5000)
+        p = project('宝剑' * 50000)
         before = estimate_project(p)
         p['units'][0]['translation'] = 'Sword'
         p['units'].append(copy.deepcopy(p['units'][0]))
@@ -52,9 +53,9 @@ class CostTests(unittest.TestCase):
         self.assertEqual(large['output_tokens'], small['output_tokens'])
 
     def test_friend_guard_blocks_before_any_paid_request_even_after_resume(self):
-        p = project('宝剑' * 5000)
+        p = project('宝剑' * 50000)
         with patch('translation_cost.is_friends_build', return_value=True), patch('translation.request_batch') as request:
-            with self.assertRaisesRegex(PermissionError, '0.5p'):
+            with self.assertRaisesRegex(PermissionError, '5p'):
                 translate(p, self.folder)
             p['units'][0]['translation'] = 'Saved'
             with self.assertRaises(PermissionError):
@@ -70,7 +71,7 @@ class CostTests(unittest.TestCase):
                 enforce_translation_policy(p)
 
     def test_personal_has_no_limit_and_friend_destiny_is_exempt(self):
-        p = project('宝剑' * 5000)
+        p = project('宝剑' * 50000)
         with patch('translation_cost.is_friends_build', return_value=False):
             enforce_translation_policy(p)
         p['mod']['id'] = PROJECT_ID
@@ -84,7 +85,7 @@ class CostTests(unittest.TestCase):
             request.assert_called_once()
 
     def test_renaming_a_full_mod_to_destiny_does_not_make_it_exempt(self):
-        p = project('宝剑' * 5000)
+        p = project('宝剑' * 50000)
         p['mod']['id'] = PROJECT_ID
         p['destiny_fields'] = [{'source': 'Other source'}]
         with patch('translation_cost.is_friends_build', return_value=True):

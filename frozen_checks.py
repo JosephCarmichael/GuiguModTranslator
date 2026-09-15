@@ -18,7 +18,8 @@ def check(report_path, live=False):
         from extractor import extract, read_json, MAGIC, MOD_KEY
         from translation import translate
         from app_config import service_profile
-        from app_config import RESOURCE_DIR, is_friends_build
+        from app_config import RESOURCE_DIR, is_friends_build, APP_VERSION
+        report['app_version'] = APP_VERSION
         report['edition'] = 'friends' if is_friends_build() else 'personal'
         import hashlib
         from installer import LOADER
@@ -29,6 +30,13 @@ def check(report_path, live=False):
         assert str(dll.net.mdtables.Assembly.rows[0].Name) == 'GuiguModTranslation'
         dll.close()
         report['checks'].append('Bundled in-game loader and integrity manifest')
+        from game_setup import verify_assets, install_files
+        assets = verify_assets()
+        report['setup_version'] = assets['melonloader_version']
+        report['checks'].append('Bundled MelonLoader 0.5.4 and all first-launch tools pass integrity checks')
+        import game_setup
+        import windows_prerequisites
+        assert windows_prerequisites.missing_runtimes() == []
         root = tk.Tk(); root.withdraw(); root.update(); root.destroy()
         report['checks'].append('Bundled Python and Tk GUI')
         node = get_typetree_node(49, UnityVersion.from_str('2020.3.9f1'))
@@ -52,6 +60,64 @@ def check(report_path, live=False):
             import io
             import threading
             from unittest.mock import patch
+            import diagnostics
+            from app_config import APP_DIR
+            diagnostic_game = temp/'diagnostic-game'; diagnostic_game.mkdir()
+            with patch('diagnostics.windows_events', return_value='offline crash fixture'), patch('diagnostics.steam_root', return_value=None):
+                log_report = diagnostics.build_report(diagnostic_game, {'message':'50% portable check'}, temp/'no-app-data', temp/'no-player-data')
+            clipboard_window = tk.Tk(); clipboard_window.withdraw(); clipboard_window.update()
+            try:
+                with patch('diagnostics.build_report', return_value=log_report):
+                    logs = diagnostics.collect_logs(diagnostic_game, window_handle=clipboard_window.winfo_id())
+                assert Path(logs['path']).parent == APP_DIR
+                assert Path(logs['path']).read_text(encoding='utf-8-sig') == log_report
+                if logs['copied']:
+                    assert clipboard_window.clipboard_get() == log_report
+                else:
+                    assert logs['errors'] == ['Copying the report: Another app is using the clipboard.']
+                    report.setdefault('unavailable_checks', []).append('Clipboard locked by another application; saved log contents verified')
+            finally:
+                clipboard_window.destroy()
+            if logs['copied']:
+                clipboard_reader = tk.Tk(); clipboard_reader.withdraw()
+                try:
+                    assert clipboard_reader.clipboard_get().replace('\r\n', '\n') == log_report
+                finally:
+                    clipboard_reader.destroy()
+                report['checks'].append('Collect logs writes plain text beside the copied EXE and copies Unicode report to Windows clipboard')
+                report['checks'].append('Copied logs remain available after the app window closes')
+            else:
+                report['checks'].append('Collect logs writes correct plain text beside the copied EXE when clipboard is unavailable')
+            # Exercise actual embedded ZIP extraction and deployment in an
+            # empty fixture. Only native game/process checks are substituted.
+            clean = temp/'clean-game'; clean.mkdir()
+            with patch('game_setup.validate_game', return_value=clean.resolve()), \
+                 patch('game_setup.game_processes', return_value=set()):
+                pending, generation = game_setup.setup_plan(clean)
+                assert generation and 'version.dll' in pending
+                game_setup.install_files(clean.resolve(), pending, lambda *_: None, lambda: False)
+            assert (clean/'Mods'/LOADER).read_bytes() == (runtime/LOADER).read_bytes()
+            assert (clean/'MelonLoader/Dependencies/Il2CppAssemblyGenerator/Cpp2IL/Cpp2IL.exe').is_file()
+            assert not (clean/'MelonLoader/Managed/Assembly-CSharp.dll').exists()
+            report['checks'].append('Clean deployment from embedded setup assets; no proprietary game assemblies bundled')
+            import launch_repair
+            repair_game = temp/'repair-library/steamapps/common/鬼谷八荒'
+            repair_game.mkdir(parents=True)
+            (repair_game/'guigubahuang.exe').write_bytes(b'fixture, not a game binary')
+            steam_manifest = repair_game.parent.parent/'appmanifest_1468810.acf'
+            steam_manifest.write_text('"AppState" { "appid" "1468810" "installdir" "鬼谷八荒" }', encoding='utf-8')
+            repair_data = temp/'repair-appdata'; repair_data.mkdir()
+            with patch('launch_repair.data_dir', return_value=repair_data), \
+                 patch('app_config.data_dir', return_value=repair_data), \
+                 patch('launch_repair.steam_running', return_value=False), \
+                 patch('game_setup.game_processes', return_value=set()), \
+                 patch('launch_repair.unsupported_path', side_effect=lambda p: not str(p).isascii()):
+                repaired = launch_repair.repair_game_path(repair_game, lambda *_: None, lambda: False)
+            assert repaired.name == 'TaleOfImmortal' and repair_game.resolve() == repaired.resolve()
+            assert (repair_game/'guigubahuang.exe').read_bytes() == b'fixture, not a game binary'
+            assert (repaired/'UserData/GuiguModTranslator/setup-pending.json').is_file()
+            assert '"installdir" "TaleOfImmortal"' in steam_manifest.read_text(encoding='utf-8')
+            report['checks'].append('Launch repair: real Windows rename, junction, Steam manifest backup/update and required live-check marker')
             barrier = threading.Barrier(16, timeout=10)
             def fake_http(request, timeout):
                 barrier.wait()
@@ -121,18 +187,42 @@ def check(report_path, live=False):
             report['checks'].append('Conflicting installation succeeds, preserves other dictionaries and uninstalls independently')
             from translation_cost import enforce_translation_policy, estimate_project, full_translation_allowed
             expensive = {'mod': {'id': 'expensive'}, 'coverage': {'files': []},
-                         'units': [{**parallel['units'][0], 'source': '宝剑' * 5000, 'translation': ''}]}
+                         'units': [{**parallel['units'][0], 'source': '宝剑' * 50000, 'translation': ''}]}
             assert not full_translation_allowed(estimate_project(expensive))
             if is_friends_build():
                 with patch('translation.request_batch') as paid:
                     try:
                         translate(expensive, temp/'blocked')
                     except PermissionError as error:
-                        assert '0.5p' in str(error)
+                        assert '5p' in str(error)
                     else:
                         raise AssertionError('Friends full-mod limit was bypassed')
                     paid.assert_not_called()
                 report['checks'].append('Friends limit blocks expensive mods before requests')
+                import api_access
+                personal_data = temp/'personal-key-data'; personal_data.mkdir()
+                test_key = 'sk-or-v1-' + 'offline-personal-fixture-' * 3
+                with patch('api_access.data_dir', return_value=personal_data), \
+                     patch('app_config.data_dir', return_value=personal_data):
+                    api_access.save_openrouter_key(test_key)
+                    assert test_key not in (personal_data/api_access.ACCESS_FILE).read_text()
+                    assert service_profile()['personal_key'] and service_profile()['api_key'] == test_key
+                    import copy
+                    with patch('translation.request_batch', return_value=['Sword']) as personal_request:
+                        personal_result = translate(copy.deepcopy(expensive), temp/'personal-unlimited')
+                    assert personal_result['translated'] == 1
+                    assert personal_request.call_args.args[1]['api_key'] == test_key
+                    api_access.use_shared_key()
+                    assert not service_profile()['personal_key']
+                    with patch('translation.request_batch') as shared_request:
+                        try:
+                            translate(copy.deepcopy(expensive), temp/'shared-limited-again')
+                        except PermissionError:
+                            pass
+                        else:
+                            raise AssertionError('Removing the personal key did not restore the shared cap')
+                        shared_request.assert_not_called()
+                report['checks'].append('Personal OpenRouter key: real Windows encryption, unlimited full-mod translation with chosen key, shared cap restored on removal (offline requests)')
             else:
                 enforce_translation_policy(expensive)
                 report['checks'].append('Personal edition has no full-mod cost restriction')
@@ -143,6 +233,53 @@ def check(report_path, live=False):
                 result = translate(expensive, temp/'destiny-exempt')
             assert result['translated'] == 1
             report['checks'].append('Destiny-menu translation remains available above the limit (offline transport)')
+            from bulk_translation import plan_bulk, run_bulk
+            from extractor import save_project
+            bulk_source = temp/'bulk-source'; bulk_source.mkdir()
+            (bulk_source/'text.json').write_text('{"name":"宝剑","description":"灵力"}', encoding='utf-8')
+            bulk_mod = {'id': 'bulk-resume', 'name': 'Bulk resume', 'path': str(bulk_source)}
+            saved_folder = temp/'bulk-projects'/'bulk-resume'
+            saved = extract(bulk_mod, saved_folder)
+            for unit in saved['units']:
+                if unit['source'] == '宝剑':
+                    unit.update(translation='Preserved custom wording', status='edited')
+            save_project(saved, saved_folder)
+            queue = plan_bulk([bulk_mod], {'bulk-resume': estimate_project(saved)}, 200)
+            assert len(queue['mods']) == 1
+            with patch('mod_workflow.preflight'), patch('mod_workflow.install', return_value={'count': 2}), \
+                 patch('translation.request_batch', return_value=['Spirit']) as bulk_request:
+                bulk_result = run_bulk(queue['mods'], temp/'bulk-projects', 200, lambda *_: None,
+                                       lambda: False, game=temp/'fixture-game')
+                assert bulk_result['results'][0]['state'] == 'success'
+                bulk_request.assert_called_once()
+                assert bulk_request.call_args.args[0] == ['灵力']
+                bulk_request.reset_mock()
+                again = run_bulk(queue['mods'], temp/'bulk-projects', 200, lambda *_: None,
+                                 lambda: False, game=temp/'fixture-game')
+                assert again['results'][0]['state'] == 'success'
+                bulk_request.assert_not_called()
+            saved = read_json(saved_folder/'project.json')
+            assert next(u['translation'] for u in saved['units'] if u['source'] == '宝剑') == 'Preserved custom wording'
+            report['checks'].append('Translate all: price-filtered queue, saved translations reused, repeat run makes zero requests (offline transport)')
+            from translation_balance import BalanceTracker, balance_text
+            from translation import request_batch
+            balance = BalanceTracker(temp/'balance-cache')
+            balance_profile = {'provider': 'OpenRouter', 'api_key': 'sk-or-v1-offline-balance-fixture',
+                               'endpoint': 'https://example.invalid/completions', 'model': 'fixture'}
+            with patch('translation_balance.fetch_key_info', return_value={'limit': 1, 'limit_remaining': '.57', 'usage': '.43'}):
+                assert balance.refresh(balance_profile)
+            billed = {'id': 'fixture-billed-response', 'usage': {'cost': '.01'},
+                      'choices': [{'message': {'content': '["Spirit"]'}}]}
+            with patch('translation_balance.tracker', return_value=balance), \
+                 patch('translation.urllib.request.urlopen', return_value=io.BytesIO(json.dumps(billed).encode())):
+                assert request_batch(['灵力'], balance_profile, 'en', lambda: False) == ['Spirit']
+            assert balance.snapshot(balance_profile)['remaining_usd'] == '0.56'
+            with patch('translation_balance.fetch_key_info', return_value={'limit': 1, 'limit_remaining': '.56', 'usage': '.44'}):
+                assert balance.refresh(balance_profile)
+            assert balance.snapshot(balance_profile)['remaining_usd'] == '0.56'
+            assert '$0.5600' in balance_text(balance.snapshot(balance_profile))[1]
+            assert balance_profile['api_key'] not in balance.path.read_text()
+            report['checks'].append('Balance: confirmed response cost deducted, GBP conversion, cache without keys and live reconciliation without double subtraction (offline endpoint)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')
