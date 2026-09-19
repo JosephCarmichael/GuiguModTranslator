@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 from app_config import RESOURCE_DIR, data_dir
@@ -29,16 +30,16 @@ def cache_root():
 
 
 def load_index():
-    result = {'schema': SCHEMA, 'mods': {}, 'titles': {}}
+    candidates = []
     for root in (RESOURCE_DIR / 'shared-library', cache_root()):
         try:
             value = json.loads((root / 'index.json').read_text(encoding='utf-8'))
-            if value.get('schema') == SCHEMA:
-                result['mods'].update(value.get('mods', {}))
-                result['titles'].update(value.get('titles', {}))
+            if (value.get('schema') == SCHEMA and isinstance(value.get('mods'), dict)
+                    and isinstance(value.get('titles'), dict) and isinstance(value.get('updated_at', ''), str)):
+                candidates.append(value)
         except (OSError, ValueError, AttributeError, TypeError):
             pass
-    return result
+    return max(candidates, key=lambda item: item.get('updated_at', '')) if candidates else {'schema': SCHEMA, 'mods': {}, 'titles': {}}
 
 
 def sync_index():
@@ -139,6 +140,8 @@ def export_library(project_root, output, titles=None):
     for path in sorted(Path(project_root).glob('*/project.json')):
         project = read_json(path)
         mod = project.get('mod', {})
+        if path.parent.name != str(mod.get('id', '')):
+            continue  # Diagnostic/export copies must not overwrite the mod's main project.
         key = library_key(mod)
         translations = {u['source']: u['translation'] for u in project.get('units', [])
                         if u.get('category') != 'technical' and valid_unit(u)}
@@ -154,6 +157,7 @@ def export_library(project_root, output, titles=None):
     for ident, item in (titles or {}).items():
         if str(ident).isdecimal() and not validate_title(item['source'], item['title']):
             index['titles'][library_key({'id': ident})] = item
+    index['updated_at'] = datetime.now(timezone.utc).isoformat()
     atomic_json(output / 'index.json', index)
     return {'mods': len(index['mods']), 'entries': sum(m['entries'] for m in index['mods'].values()),
             'bytes': sum(m['bytes'] for m in index['mods'].values()), 'titles': len(index['titles'])}

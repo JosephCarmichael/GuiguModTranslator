@@ -128,8 +128,10 @@ test_invalid_saved_titles_are_retried (test_retranslation.RetranslationTests.tes
 test_missing_placeholders_chinese_and_whitespace_cannot_tick (test_retranslation.RetranslationTests.test_missing_placeholders_chinese_and_whitespace_cannot_tick) ... ok
 test_retranslation_uses_settings_and_backs_up_old_text (test_retranslation.RetranslationTests.test_retranslation_uses_settings_and_backs_up_old_text) ... ok
 test_title_can_be_retranslated_and_is_reused_on_next_launch (test_retranslation.RetranslationTests.test_title_can_be_retranslated_and_is_reused_on_next_launch) ... ok
+test_a_newer_bundled_index_is_not_overridden_by_stale_downloads (test_shared_library.SharedTests.test_a_newer_bundled_index_is_not_overridden_by_stale_downloads) ... ok
 test_bad_remote_checksum_keeps_previous_file (test_shared_library.SharedTests.test_bad_remote_checksum_keeps_previous_file) ... ok
 test_damaged_cache_and_wrong_hash_are_ignored (test_shared_library.SharedTests.test_damaged_cache_and_wrong_hash_are_ignored) ... ok
+test_diagnostic_copies_cannot_overwrite_the_main_saved_project (test_shared_library.SharedTests.test_diagnostic_copies_cannot_overwrite_the_main_saved_project) ... ok
 test_exact_matches_reuse_without_overwriting_local_edits (test_shared_library.SharedTests.test_exact_matches_reuse_without_overwriting_local_edits) ... ok
 test_export_contains_only_valid_text_and_no_local_metadata (test_shared_library.SharedTests.test_export_contains_only_valid_text_and_no_local_metadata) ... ok
 test_local_namespace_is_stable_across_computers (test_shared_library.SharedTests.test_local_namespace_is_stable_across_computers) ... ok
@@ -195,6 +197,6 @@ test_translation_pipeline_with_mock_deepseek_transport (test_workflow.WorkflowTe
 test_unreadable_duplicate_and_media_are_reported (test_workflow.WorkflowTests.test_unreadable_duplicate_and_media_are_reported) ... ok
 
 ----------------------------------------------------------------------
-Ran 195 tests in 6.961s
+Ran 197 tests in 6.884s
 
 OK

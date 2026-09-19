@@ -261,7 +261,12 @@ class TitleRefreshTests(unittest.TestCase):
             app.start_titles = MethodType(App.start_titles, app)
             app.poll = MethodType(App.poll, app)
             started, release = threading.Event(), threading.Event()
-            calls = []
+            calls, workers = [], []
+            thread_type = threading.Thread
+            def worker(**kwargs):
+                thread = thread_type(**kwargs)
+                workers.append(thread)
+                return thread
             def request(texts, *args, **kwargs):
                 calls.append(texts)
                 if len(calls) == 1:
@@ -272,20 +277,27 @@ class TitleRefreshTests(unittest.TestCase):
             with patch('mod_titles.data_dir', return_value=Path(directory)), \
                  patch('shared_library.reuse_titles', return_value=0), \
                  patch('app_config.service_profile', return_value=PROFILE), \
-                 patch('translation.request_batch', side_effect=request):
-                app.start_titles()
-                self.assertTrue(started.wait(5))
-                app.mods['2'] = {'id': '2', 'name': '新宝剑门'}
-                app.start_titles()
-                release.set()
-                deadline = time.monotonic() + 5
-                while time.monotonic() < deadline:
-                    App.poll(app)
-                    if not app.title_running and len(app.titles) == 2:
-                        break
-                    time.sleep(.01)
-                self.assertEqual(calls, [['宝剑门'], ['新宝剑门']])
-                self.assertEqual(set(load_titles()), {'1', '2'})
+                 patch('translation.request_batch', side_effect=request), \
+                 patch('desktop.threading.Thread', side_effect=worker):
+                try:
+                    app.start_titles()
+                    self.assertTrue(started.wait(5))
+                    app.mods['2'] = {'id': '2', 'name': '新宝剑门'}
+                    app.start_titles()
+                    release.set()
+                    deadline = time.monotonic() + 5
+                    while time.monotonic() < deadline:
+                        App.poll(app)
+                        if not app.title_running and len(app.titles) == 2:
+                            break
+                        time.sleep(.01)
+                    self.assertEqual(calls, [['宝剑门'], ['新宝剑门']])
+                    self.assertEqual(set(load_titles()), {'1', '2'})
+                finally:
+                    release.set()
+                    for thread in workers:
+                        thread.join(10)
+                        self.assertFalse(thread.is_alive())
 
 
 if __name__ == '__main__':

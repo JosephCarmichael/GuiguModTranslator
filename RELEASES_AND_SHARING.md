@@ -91,9 +91,9 @@ translations and titles: no local paths, credentials, game binaries, saves or
 provenance metadata. Incomplete projects can contribute valid entries without
 being labelled complete.
 
-The initial export has 1,383 translations across 4 mods and 14 titles, with
-114,903 bytes of compressed translation files. At that sample's compression
-ratio, one million similar entries would be about 83 MB, excluding Git history
+The initial export has 1,349 translations across 4 mods and 14 titles, with
+108,899 bytes of compressed translation files. At that sample's compression
+ratio, one million similar entries would be about 81 MB, excluding Git history
 and indexes. Long dialogue can use substantially more space. The files are
 split per mod to keep individual files small. Git history grows as versions
 are committed; periodically assess repository size rather than assuming an

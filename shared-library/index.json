@@ -2,9 +2,9 @@
   "schema": 1,
   "mods": {
     "6a16764241c5dfec4f35fb1d4f479ade88a0bbfe3e8151dba4c611eab0428bb2": {
-      "sha256": "67800fff63de062e17e67ca71d3604a7240488f32503129f80dca2893a79c812",
-      "entries": 48,
-      "bytes": 6886
+      "sha256": "ed9335cea16629d266a4e8f11c7be9ae8bf4c5c5f285ea6b307bf0cf23fe7952",
+      "entries": 14,
+      "bytes": 882
     },
     "6ea027b4d1947035148748cb43dcd73ad4aef6e3d37e9564a279bbfc3b149818": {
       "sha256": "5a7048ca40c697c2ca3bb7ee866ac148e8b97dffecc2893823d0066db1ed68ca",
@@ -79,5 +79,6 @@
       "source": "【哈基康御-好感度与堕落值变化立绘】",
       "title": "【Hajikangyu - Favorability and Corruption Value Change Portrait】"
     }
-  }
+  },
+  "updated_at": "2026-09-19T12:40:54.577695+00:00"
 }
