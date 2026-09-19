@@ -1,0 +1,29 @@
+{
+  "result": "passed",
+  "repository": "JosephCarmichael/GuiguModTranslator",
+  "private": true,
+  "editions": [
+    {
+      "edition": "friends",
+      "version": "1.4.0",
+      "asset": "GuiguModTranslator-Friends.zip",
+      "archive_sha256": "5702af7edfbcb97d9a55ba1cb539f21aeafa18ce443061f6d493d0cdddb66af8",
+      "executable_sha256": "6ed17ffebc591ed723ef7c64016ed6b8f344389c2799d2149df867e91f6ef3a3",
+      "frozen_checks": 25,
+      "result": "passed"
+    },
+    {
+      "edition": "personal",
+      "version": "1.4.0",
+      "asset": "GuiguModTranslator-Personal.zip",
+      "archive_sha256": "e44abd0bbfd650374e675ba7ed54198682ebef446d58bdfa4d9cef90d2c3b994",
+      "executable_sha256": "645e28e5f7628bad7346fde33aed2d841d5e318e760cf779014dc4100b8fbb4c",
+      "frozen_checks": 24,
+      "result": "passed"
+    }
+  ],
+  "credentials_and_titles_preserved": true,
+  "local_personal_exe_updated": true,
+  "real_mod_extraction": "passed",
+  "paid_translation_requests": 0
+}

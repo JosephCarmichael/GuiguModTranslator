@@ -19,6 +19,7 @@ Source: `NEED TO ADD UPDATED.md`.
 ## Local verification
 
 - Windows unit-suite output: `evidence/updated-tests-windows.txt`.
+  All 197 tests pass locally and on the clean GitHub Windows runner.
 - Native Windows UI test: `tests/updated_gui_smoke.py` and
   `evidence/updated-gui-check.json`, with Personal/Friends screenshots.
   It uses temporary app data, actual local artwork, a fixture provider and
@@ -31,6 +32,33 @@ Source: `NEED TO ADD UPDATED.md`.
 - Initial Personal and Friends folder/single-file builds passed their offline
   self-tests. Final published artifacts are additionally verified by the
   GitHub release workflow and a download check after publishing.
+
+## Published release verification — 19 September 2026
+
+- [Build and release succeeded](https://github.com/JosephCarmichael/GuiguModTranslator/actions/runs/35443569840)
+  for commit `a50e837863eeb327d7fb72bbfecedb97fd561a56`.
+- [v1.4.0](https://github.com/JosephCarmichael/GuiguModTranslator/releases/tag/v1.4.0)
+  contains both edition ZIPs and `update-manifest.json`.
+- The actual private-repository updater detected the release from version
+  1.3.8, selected each edition correctly, downloaded it and verified both
+  checksums. Version 1.4.0 correctly reports no newer release.
+- Published Friends EXE: 25 checks pass; Personal: 24 checks pass. The extra
+  Friends check verifies the shared-key cap. Results are saved in
+  `evidence/published-friends-selftest.json` and
+  `evidence/published-personal-selftest.json`.
+- Published Personal also passes real-mod extraction. The local root Personal
+  EXE and both local release ZIPs now match the published files.
+- `evidence/github-release-check.json` records hashes and verifies that the
+  source/portable credential files and title caches survive these checks.
+  No paid translation requests were made.
+- The app's private GitHub client successfully downloads the shared index and
+  matching dictionaries. Export now selects only canonical project folders,
+  excluding diagnostic copies. A newer bundled index wins over an older
+  downloaded cache. The final library has 1,349 entries, 14 titles and 108,899
+  bytes of compressed translation data.
+- A native Windows child-process test also verifies the updater waits for the
+  old process to exit before replacement. Replacement/rollback and data
+  preservation are covered by the Windows unit tests.
 
 ## Scope of the checks
 
