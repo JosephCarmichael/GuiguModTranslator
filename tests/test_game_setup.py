@@ -14,7 +14,7 @@ import game_setup as setup
 class SetupTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(); self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name); self.game = self.root / 'game'; self.game.mkdir()
+        self.root = Path(temp.name).resolve(); self.game = self.root / 'game'; self.game.mkdir()
         self.assets = self.root / 'assets'; self.assets.mkdir()
         self.data = self.root / 'appdata'; self.data.mkdir()
         self.patch('game_setup.data_dir', return_value=self.data)

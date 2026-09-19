@@ -2,6 +2,9 @@ name: Build and release
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'evidence/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -30,7 +33,9 @@ jobs:
           Path('bundled_service.json').write_text(json.dumps(value), encoding='utf-8')
           '@ | python -
       - name: Unit tests
-        run: python -X utf8 -m unittest discover -s tests -v
+        run: |
+          python -c "from runtime_bundle import restore_runtime; restore_runtime()"
+          python -X utf8 -m unittest discover -s tests -v
       - name: Build and verify Friends
         run: python -X utf8 build_release.py --offline --use-prebuilt-runtime --edition friends
       - name: Build and verify Personal
@@ -39,3 +44,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -X utf8 publish_release.py --publish
+      - name: Keep build verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-verification
+          path: |
+            projects/frozen-*.json
+            projects/build-*.log
+          if-no-files-found: ignore

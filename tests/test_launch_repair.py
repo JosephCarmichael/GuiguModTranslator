@@ -14,7 +14,7 @@ class LaunchRepairTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         self.game = self.root / 'steamapps/common/鬼谷八荒'
         self.game.mkdir(parents=True)
         self.exe = self.game / 'guigubahuang.exe'
