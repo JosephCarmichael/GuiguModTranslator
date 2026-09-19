@@ -109,6 +109,7 @@ def check(report_path, live=False):
             repair_data = temp/'repair-appdata'; repair_data.mkdir()
             with patch('launch_repair.data_dir', return_value=repair_data), \
                  patch('app_config.data_dir', return_value=repair_data), \
+                 patch('launch_repair.short_game_path', return_value=None), \
                  patch('launch_repair.steam_running', return_value=False), \
                  patch('game_setup.game_processes', return_value=set()), \
                  patch('launch_repair.unsupported_path', side_effect=lambda p: not str(p).isascii()):
@@ -261,6 +262,30 @@ def check(report_path, live=False):
             saved = read_json(saved_folder/'project.json')
             assert next(u['translation'] for u in saved['units'] if u['source'] == '宝剑') == 'Preserved custom wording'
             report['checks'].append('Translate all: price-filtered queue, saved translations reused, repeat run makes zero requests (offline transport)')
+            from mod_titles import display_name, load_titles, translate_titles
+            from saved_translations import scan_statuses, tick
+            title_data = temp/'title-data'; title_data.mkdir()
+            with patch('mod_titles.data_dir', return_value=title_data), \
+                 patch('translation.request_batch', return_value=['Sword Sect']) as title_request:
+                unknown = {'id': 'title-mod', 'name': '宝剑门'}
+                titles = {}
+                first = translate_titles([unknown, {'id': 'english-mod', 'name': 'English mod'}], titles)
+                assert first['translated'] == 1 and title_request.call_count == 1
+                assert title_request.call_args.args[0] == ['宝剑门']
+                assert load_titles()['title-mod']['title'] == 'Sword Sect'
+                assert display_name(unknown, load_titles()) == 'Sword Sect (宝剑门)'
+                again = translate_titles([unknown], load_titles())
+                assert again['translated'] == 0 and title_request.call_count == 1
+            report['checks'].append('Mod titles: one request for unknown Chinese names, saved once and reused with the original name (offline transport)')
+            tick_root = temp/'tick-projects'
+            tick_folder = tick_root/'tick-mod'; tick_folder.mkdir(parents=True)
+            (tick_folder/'project.json').write_text(json.dumps({'mod': {'id': 'tick-mod'}, 'coverage': {'files': [{'status': 'scanned'}]},
+                'units': [{'id': '1', 'source': '宝剑', 'translation': 'Sword', 'status': 'machine', 'category': 'player_text', 'occurrences': []}]},
+                ensure_ascii=False), encoding='utf-8')
+            statuses = scan_statuses([{'id': 'tick-mod'}, {'id': 'untranslated-mod'}], tick_root)
+            assert statuses['tick-mod']['complete'] and tick(statuses['tick-mod']) == '✓ '
+            assert statuses['untranslated-mod'] is None and tick(statuses['untranslated-mod']) == ''
+            report['checks'].append('A saved, fully translated mod is ticked; a mod without a saved project is not ticked')
             from translation_balance import BalanceTracker, balance_text
             from translation import request_batch
             balance = BalanceTracker(temp/'balance-cache')
@@ -280,6 +305,38 @@ def check(report_path, live=False):
             assert '$0.5600' in balance_text(balance.snapshot(balance_profile))[1]
             assert balance_profile['api_key'] not in balance.path.read_text()
             report['checks'].append('Balance: confirmed response cost deducted, GBP conversion, cache without keys and live reconciliation without double subtraction (offline endpoint)')
+            # Exercise the new modules from the copied executable as well as source.
+            from thumbnails import load_thumbnail
+            from PIL import Image
+            preview = io.BytesIO()
+            Image.new('RGB', (180, 90), '#385ee8').save(preview, format='PNG')
+            raw = preview.getvalue()
+            (mod/'ModProjectPreview.png').write_bytes(MAGIC + bytes((v + MOD_KEY[i % len(MOD_KEY)]) & 255 for i, v in enumerate(raw)))
+            assert load_thumbnail({'path': str(mod)}).size == (56, 56)
+            report['checks'].append('Game-encoded mod preview decodes and resizes in the portable app')
+            import shared_library
+            shared_project = {'mod': {'id': 'portable-shared'}, 'coverage': {'files': []}, 'units': [
+                {'id': 'shared', 'source': '宝剑', 'translation': 'Sword', 'status': 'edited', 'category': 'player_text'}]}
+            shared_source = temp/'shared-source/portable-shared'; shared_source.mkdir(parents=True)
+            (shared_source/'project.json').write_text(json.dumps(shared_project), encoding='utf-8')
+            with patch('shared_library.RESOURCE_DIR', temp/'shared-assets'), patch('shared_library.data_dir', return_value=temp/'shared-data'):
+                shared_library.export_library(shared_source.parent, temp/'shared-assets/shared-library')
+                shared_project['units'][0]['translation'] = ''
+                assert shared_library.apply_shared(shared_project) == 1
+                assert shared_project['units'][0]['translation'] == 'Sword'
+            report['checks'].append('Shared translation export and exact-match reuse without credentials or API requests')
+            import app_updates
+            import zipfile
+            zipped = io.BytesIO()
+            with zipfile.ZipFile(zipped, 'w') as archive:
+                archive.writestr('GuiguModTranslator/GuiguModTranslator.exe', b'offline update fixture')
+            payload = zipped.getvalue()
+            metadata = {'version': '9.0.0', 'edition': report['edition'], 'asset': {'id': 1},
+                        'sha256': hashlib.sha256(payload).hexdigest(), 'exe_sha256': hashlib.sha256(b'offline update fixture').hexdigest()}
+            with patch('app_updates.open_request', return_value=io.BytesIO(payload)), patch('app_updates.data_dir', return_value=temp/'update-data'):
+                staged = app_updates.prepare_update(metadata)
+                assert Path(staged['executable']).read_bytes() == b'offline update fixture'
+            report['checks'].append('App update archive and executable checksums verified before staging (offline transport)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
                 result=translate(p,temp/'output')

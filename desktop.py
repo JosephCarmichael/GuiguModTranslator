@@ -10,6 +10,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from app_config import APP_DIR, APP_VERSION, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
 from app_config import BATCH_SIZE_CHOICES, translation_batch_size, is_friends_build
+from mod_titles import apply_titles, display_name, load_titles, needs_title, translate_titles
+from saved_translations import job_status, scan_statuses, tick
 from extractor import APP, atomic_json, discover
 from mod_workflow import run_job
 from installer import installation_message
@@ -26,6 +28,20 @@ class App(tk.Tk):
         self.configure(bg='#f5f6fa')
         self.game = installed_game()
         self.mods = {}
+        self.scanning_mods = False
+        self.titles = load_titles()
+        self.saved = {}
+        self.title_running = False
+        self.title_refresh_pending = False
+        self.title_stop = threading.Event()
+        self.shared_running = False
+        self.update_running = False
+        self.update_stop = threading.Event()
+        self.available_update = None
+        self.prepared_update = None
+        self.update_status = tk.StringVar()
+        self.thumbnails = {}
+        self.detail_photos = {}
         self.estimates = {}
         self.estimate_stop = threading.Event()
         self.friends = is_friends_build()
@@ -55,117 +71,154 @@ class App(tk.Tk):
         self.concurrency = tk.IntVar(value=translation_concurrency())
         self.batch_size = tk.IntVar(value=translation_batch_size())
         self.status = tk.StringVar(value='Finding your mods…')
-        style = ttk.Style(self)
-        style.theme_use('clam')
-        style.configure('TFrame', background='#f5f6fa')
-        style.configure('TLabel', background='#f5f6fa', font=('Segoe UI', 10))
-        style.configure('Title.TLabel', font=('Segoe UI', 24, 'bold'), foreground='#17213c')
-        style.configure('Sub.TLabel', foreground='#667086')
-        style.configure('Action.TButton', font=('Segoe UI', 12, 'bold'), padding=(20, 14),
-                        foreground='white', background='#385ee8', borderwidth=0)
-        style.map('Action.TButton', background=[('disabled', '#bcc6e8'), ('active', '#2446c2')])
-        style.configure('Treeview', font=('Segoe UI', 11), rowheight=37, borderwidth=0)
-        menu = tk.Menu(self)
-        options = tk.Menu(menu, tearoff=False)
-        options.add_command(label='Choose game folder…', command=self.choose_game)
-        options.add_command(label='Refresh mods', command=self.refresh)
-        options.add_command(label='Check game setup', command=self.start_setup)
-        options.add_command(label='Collect logs', command=self.collect_logs)
-        options.add_command(label='API key…', command=self.api_key_settings)
-        options.add_command(label='Find untranslated destinies', command=self.find_destinies)
-        options.add_command(label='About cost estimates…', command=lambda: messagebox.showinfo('Cost estimates', PRICING_NOTE))
-        options.add_separator()
-        options.add_command(label='Translation editor…', command=self.editor)
-        options.add_command(label='Open saved translations', command=self.open_folder)
-        options.add_command(label='Install saved translations', command=self.install_saved)
-        options.add_command(label='Remove selected mod’s translations', command=self.remove_installed)
-        menu.add_cascade(label='Options', menu=options)
-        self.configure(menu=menu)
-        body = ttk.Frame(self, padding=(24, 16))
-        body.pack(fill='both', expand=True)
-        balance_header = ttk.Frame(body)
-        balance_header.pack(fill='x', pady=(0, 8))
-        balance_left = ttk.Frame(balance_header)
-        balance_left.pack(side='left', fill='x', expand=True)
-        ttk.Label(balance_left, textvariable=self.balance_label, font=('Segoe UI', 13, 'bold'), foreground='#17213c').pack(anchor='w')
-        ttk.Label(balance_left, textvariable=self.balance_detail, style='Sub.TLabel', wraplength=420).pack(anchor='w')
-        key_controls = ttk.Frame(balance_header)
-        key_controls.pack(side='right', padx=(8, 0))
-        self.api_key_button = ttk.Button(key_controls, text='API key…', command=self.api_key_settings)
-        self.api_key_button.pack(anchor='e')
-        from api_key_dialog import help_link
-        self.api_help_button = help_link(key_controls, self)
-        self.api_help_button.pack(anchor='e')
-        ttk.Label(body, text='Translate your mods', style='Title.TLabel').pack(anchor='w')
-        ttk.Label(body, text='Choose a mod. Translate and install it for your next game launch.', style='Sub.TLabel').pack(anchor='w', pady=(6, 12))
-        ttk.Label(body, text='Search mods', style='Sub.TLabel').pack(anchor='w')
-        ttk.Entry(body, textvariable=self.search, font=('Segoe UI', 11)).pack(fill='x', pady=(5, 12))
-        self.search.trace_add('write', lambda *_: self.render())
-        list_frame = ttk.Frame(body)
-        list_frame.pack(fill='both', expand=True)
-        self.list = ttk.Treeview(list_frame, columns=('cost', 'access'), show='tree headings', selectmode='browse', height=4)
-        self.list.heading('#0', text='Mod')
-        self.list.heading('cost', text='Full-mod estimate')
-        self.list.heading('access', text='Translation')
-        self.list.column('#0', width=380, minwidth=180)
-        self.list.column('cost', width=125, minwidth=110, stretch=False, anchor='e')
-        self.list.column('access', width=155, minwidth=140, stretch=False)
-        scroll = ttk.Scrollbar(list_frame, orient='vertical', command=self.list.yview)
-        self.list.configure(yscrollcommand=scroll.set)
-        self.list.pack(side='left', fill='both', expand=True)
-        scroll.pack(side='right', fill='y')
-        self.list.bind('<<TreeviewSelect>>', self.selected)
-        self.choose = ttk.Button(body, text='Choose game folder…', command=self.choose_game)
-        speed = ttk.Frame(body)
-        speed.pack(fill='x', pady=(12, 0))
-        ttk.Label(speed, text='Max parallel requests').pack(side='left')
-        self.parallel = ttk.Combobox(speed, textvariable=self.concurrency, values=CONCURRENCY_CHOICES, state='readonly', width=6)
-        self.parallel.pack(side='left', padx=10)
-        self.parallel.bind('<<ComboboxSelected>>', self.change_concurrency)
-        ttk.Label(speed, text='Entries per request').pack(side='left', padx=(15, 0))
-        self.batch_choice = ttk.Combobox(speed, textvariable=self.batch_size, values=BATCH_SIZE_CHOICES, state='readonly', width=6)
-        self.batch_choice.pack(side='left', padx=10)
-        self.batch_choice.bind('<<ComboboxSelected>>', self.change_batch_size)
-        destiny_actions = ttk.Frame(body)
-        destiny_actions.pack(fill='x', pady=(10, 0))
-        self.destiny_button = ttk.Button(destiny_actions, text='Find untranslated destinies', command=self.find_destinies)
-        self.destiny_button.pack(side='left')
-        self.translate_destiny_button = ttk.Button(destiny_actions, text='Translate destiny menu', command=self.translate_destinies)
-        self.translate_destiny_button.pack(side='left', padx=(10, 0))
-        bulk = ttk.Frame(body)
-        bulk.pack(fill='x', pady=(10, 0))
-        self.bulk_button = ttk.Button(bulk, text='Translate all', command=self.translate_all)
-        self.bulk_button.pack(side='left')
-        self.price_slider = tk.Scale(bulk, from_=5, to=200, resolution=5, orient='horizontal',
-                                     variable=self.bulk_price, command=self.change_bulk_price,
-                                     showvalue=False, highlightthickness=0, bg='#f5f6fa', bd=0)
-        self.price_slider.pack(side='left', fill='x', expand=True, padx=10)
-        ttk.Label(bulk, textvariable=self.bulk_price_label, width=22).pack(side='right')
-        ttk.Label(body, textvariable=self.bulk_note, style='Sub.TLabel', wraplength=580).pack(anchor='w', pady=(3, 0))
-        self.action = ttk.Button(body, text='Translate and install', style='Action.TButton', command=self.translate)
-        self.action.pack(fill='x', pady=(12, 8))
-        self.action.state(['disabled'])
-        self.bar = ttk.Progressbar(body, mode='indeterminate')
-        self.status_label = ttk.Label(body, textvariable=self.status, wraplength=720)
-        self.status_label.pack(anchor='w', pady=(5, 8))
-        body.bind('<Configure>', lambda event: self.status_label.configure(wraplength=max(240, event.width - 60)))
-        self.result_button = ttk.Button(body, text='Open translations', command=self.open_folder)
-        self.setup_retry = ttk.Button(body, text='Retry setup', command=self.start_setup)
-        self.steam_install = ttk.Button(body, text='Install game in Steam', command=lambda: os.startfile('steam://install/1468810'))
-        footer = ttk.Frame(body)
-        footer.pack(fill='x')
-        self.logs_button = ttk.Button(footer, text='Collect logs', command=self.collect_logs)
-        self.logs_button.pack(side='left')
-        ttk.Label(footer, textvariable=self.log_status, style='Sub.TLabel', wraplength=340).pack(side='left', padx=8)
-        self.play_button = ttk.Button(footer, text='Launch game', command=self.play)
-        self.play_button.pack(side='right')
-        ttk.Label(body, text='Installs in-game text translations. Restart the game after changes.', style='Sub.TLabel').pack(anchor='w', pady=(6, 0))
+        self.title_status = tk.StringVar()
+        from desktop_view import build_view
+        build_view(self)
         self.protocol('WM_DELETE_WINDOW', self.close)
         self.after(100, self.poll)
         self.after(10, self.start_setup)
         self.after(5000, self.check_game_install)
         self.refresh_access()
         self.after(50, self.balance_tick)
+        self.after(1800, self.check_updates)
+
+    def github_settings(self):
+        from github_dialog import GitHubDialog
+        def changed():
+            self.check_updates(manual=True)
+            self.refresh_shared()
+        return GitHubDialog(self, changed)
+
+    def check_updates(self, manual=False):
+        if self.update_running or os.environ.get('GUIGU_TRANSLATOR_OFFLINE') == '1':
+            return
+        self.update_running = True
+        if manual:
+            self.update_status.set('Checking GitHub for updates…')
+        def job():
+            from app_updates import check_update
+            try:
+                self.events.put(('update_checked', (check_update(), manual)))
+            except Exception as exc:
+                self.events.put(('update_error', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
+
+    def install_update(self):
+        if self.update_running or not self.available_update:
+            return
+        if self.busy or self.title_running:
+            self.update_status.set('Update available. Finish or cancel translation before installing it.')
+            return
+        if not getattr(sys, 'frozen', False):
+            self.update_status.set('This is a source checkout. Pull the latest Git commit, or use the portable EXE for automatic updates.')
+            return
+        if not messagebox.askyesno('Update available',
+                f'Install version {self.available_update["version"]}? Your saved translations and settings will be kept.\n\n'
+                'The app will restart after the download is verified.', parent=self):
+            return
+        self.update_running = True
+        self.update_stop.clear()
+        self.update_button.state(['disabled'])
+        def job():
+            from app_updates import prepare_update
+            try:
+                prepared = prepare_update(self.available_update,
+                    lambda message: self.events.put(('update_progress', message)), self.update_stop.is_set)
+                self.events.put(('update_prepared', prepared))
+            except Exception as exc:
+                self.events.put(('update_error', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
+
+    def finish_update(self):
+        if not self.prepared_update:
+            return
+        if self.busy or self.title_running or self.collecting_logs:
+            self.update_status.set('Update downloaded. It will install when the current work finishes.')
+            self.after(1000, self.finish_update)
+            return
+        from app_updates import launch_installer
+        try:
+            launch_installer(self.prepared_update)
+        except Exception as exc:
+            self.update_status.set('Could not install update: ' + str(exc))
+            self.update_running = False
+            self.update_button.state(['!disabled'])
+            return
+        self.estimate_stop.set()
+        self.title_stop.set()
+        self.destroy()
+
+    def refresh_shared(self):
+        if self.shared_running:
+            return
+        if os.environ.get('GUIGU_TRANSLATOR_OFFLINE') == '1':
+            self.start_titles()
+            return
+        self.shared_running = True
+        def job():
+            from shared_library import sync_index
+            try:
+                sync_index()
+                self.events.put(('shared_done', ''))
+            except Exception as exc:
+                self.events.put(('shared_done', str(exc)))
+        threading.Thread(target=job, daemon=True).start()
+
+    def prepare_shared_mod(self, mod):
+        if os.environ.get('GUIGU_TRANSLATOR_OFFLINE') == '1':
+            return
+        from shared_library import sync_mod
+        try:
+            self.events.put(('progress', 'Checking shared translations…'))
+            sync_mod(mod)
+        except Exception:
+            self.events.put(('progress', 'Shared library unavailable. Reusing locally saved text and continuing with your translation settings.'))
+
+    def refresh_thumbnails(self):
+        from PIL import ImageTk
+        from thumbnails import load_thumbnail
+        for ident, mod in self.mods.items():
+            image = load_thumbnail(mod)
+            self.thumbnails[ident] = ImageTk.PhotoImage(image, master=self) if image else None
+            image = load_thumbnail(mod, (206, 104))
+            self.detail_photos[ident] = ImageTk.PhotoImage(image, master=self) if image else None
+
+    def update_detail(self):
+        selection = self.list.selection()
+        enabled = bool(selection) and not self.busy and self.setup_ready
+        self.again_button.state(['!disabled'] if enabled and self.can_translate(selection[0]) else ['disabled'])
+        self.title_again_button.state(['!disabled'] if selection and not self.title_running and needs_title(self.mods[selection[0]], {}) else ['disabled'])
+        if not selection:
+            self.detail_name.set('Ready when you are')
+            self.detail_original.set('')
+            self.detail_meta.set('Choose a mod to view its saved progress and translation options.')
+            self.detail_saved.set('')
+            self.detail_image.configure(image='', text='Select a mod')
+            return
+        ident = selection[0]
+        mod = self.mods[ident]
+        name = mod.get('title') or mod['name']
+        self.detail_name.set(name if len(name) <= 85 else name[:82] + '…')
+        original = mod['name'] if mod.get('title') else ''
+        self.detail_original.set(original if len(original) <= 60 else original[:57] + '…')
+        self.detail_meta.set(' · '.join(str(mod[key]) for key in ('origin', 'author', 'version') if mod.get(key)))
+        from saved_translations import note
+        self.detail_saved.set(note(self.saved.get(ident)) or 'No saved translation yet')
+        image = self.detail_photos.get(ident)
+        self.detail_image.configure(image=image or '', text='' if image else 'No preview available')
+
+    def retranslate_selected(self):
+        if self.busy or not self.list.selection():
+            return
+        if messagebox.askyesno('Translate mod again',
+                'Translate every entry again using your selected API key, parallel requests and batch size?\n\n'
+                'This makes new paid requests. A backup of your previous translations will be saved.', parent=self):
+            self.translate(retranslate=True)
+
+    def retranslate_title(self):
+        if self.title_running or not self.list.selection():
+            return
+        self.start_titles([self.mods[self.list.selection()[0]]], retranslate=True)
 
     def refresh_access(self):
         from app_config import service_profile
@@ -256,6 +309,7 @@ class App(tk.Tk):
         if not self.game:
             self.refresh()
             return
+        self.refresh()
         self.setting_up = self.busy = True
         self.setup_ready = False
         self.update_bulk_controls()
@@ -298,7 +352,7 @@ class App(tk.Tk):
             self.status.set(str(exc))
 
     def refresh(self):
-        if self.busy:
+        if self.busy or self.scanning_mods:
             return
         if not self.game:
             self.status.set('Install Tale of Immortal in Steam, then click Retry setup. If it is already installed, choose its folder.')
@@ -306,18 +360,18 @@ class App(tk.Tk):
             self.setup_retry.pack(before=self.action, fill='x', pady=5)
             self.steam_install.pack(before=self.action, fill='x', pady=5)
             return
-        if not self.setup_ready:
-            self.start_setup()
-            return
-        self.status.set('Finding your mods…')
-        self.busy = True
-        self.update_bulk_controls()
-        self.action.state(['disabled'])
+        # Browsing downloaded mods does not require a working game runtime.
+        self.scanning_mods = True
         def scan():
             try:
-                self.events.put(('mods', discover(self.game)))
+                mods = discover(self.game)
+                from destinies import destiny_mod
+                mods.append(destiny_mod(self.game))
+                statuses = scan_statuses(mods)
             except Exception:
-                self.events.put(('error', 'Could not read your mods. Choose the game folder from Options.'))
+                self.events.put(('mods_error', 'Could not read your mods. Choose the game folder from Options.'))
+                return
+            self.events.put(('mods', (mods, statuses)))
         threading.Thread(target=scan, daemon=True).start()
 
     def choose_game(self):
@@ -395,6 +449,49 @@ class App(tk.Tk):
                 self.events.put(('estimate', (stop, mod['id'], value)))
         threading.Thread(target=scan, daemon=True).start()
 
+    def refresh_saved(self):
+        """Re-read the saved mod projects in the background to update the ticks."""
+        mods = list(self.mods.values())
+        if not mods:
+            return
+        def job():
+            try:
+                self.events.put(('saved', scan_statuses(mods)))
+            except Exception:
+                pass
+        threading.Thread(target=job, daemon=True).start()
+
+    def start_titles(self, mods=None, retranslate=False):
+        """Translate unknown Chinese mod names once, then keep them for later launches."""
+        mods = list(self.mods.values()) if mods is None else mods
+        if self.title_running:
+            self.title_refresh_pending = True
+            return
+        self.title_refresh_pending = False
+        if not retranslate:
+            from shared_library import reuse_titles
+            from mod_titles import save_titles
+            if reuse_titles(mods, self.titles):
+                save_titles(self.titles)
+                apply_titles(list(self.mods.values()), self.titles)
+                self.render()
+        if not any(needs_title(mod, {} if retranslate else self.titles) for mod in mods):
+            return
+        self.title_running = True
+        self.title_refresh_pending = False
+        self.title_stop.clear()
+        def job():
+            titles = load_titles()
+            try:
+                result = translate_titles(mods, titles, stop=self.title_stop.is_set,
+                                          progress=lambda message: self.events.put(('title_progress', message)),
+                                          on_save=lambda value: self.events.put(('titles', value)),
+                                          retranslate=retranslate)
+            except Exception as exc:
+                result = {'translated': 0, 'failed': 0, 'saved': len(titles), 'error': str(exc), 'cancelled': False}
+            self.events.put(('titles_done', result))
+        threading.Thread(target=job, daemon=True).start()
+
     def cost_columns(self, ident):
         from destinies import PROJECT_ID
         estimate = self.estimates.get(ident)
@@ -409,40 +506,58 @@ class App(tk.Tk):
             access = 'Estimate unavailable'
         else:
             access = 'Available' if full_translation_allowed(estimate) else 'Over 5p limit'
+        if self.saved.get(ident, {}) and self.saved[ident].get('complete'):
+            access = '✓ Translated'
         return text, access
 
     def can_translate(self, ident):
         from destinies import PROJECT_ID
-        return ident == PROJECT_ID or not self.friends or self.personal_key or full_translation_allowed(self.estimates.get(ident))
+        from shared_library import library_key, load_index
+        shared = library_key(self.mods.get(ident, {})) in load_index().get('mods', {})
+        return ident == PROJECT_ID or not self.friends or self.personal_key or shared or full_translation_allowed(self.estimates.get(ident))
 
     def render(self):
         selected = self.list.selection()
         self.list.delete(*self.list.get_children())
         term = self.search.get().casefold()
         for ident, mod in self.mods.items():
-            if term in (mod['name'] + ' ' + ident).casefold():
-                self.list.insert('', 'end', iid=ident, text=mod['name'], values=self.cost_columns(ident))
+            label = display_name(mod, self.titles)
+            if term in (mod['name'] + ' ' + label + ' ' + ident).casefold():
+                # A tick marks a mod that already holds a complete saved translation.
+                self.list.insert('', 'end', iid=ident, text=tick(self.saved.get(ident)) + label,
+                                 values=self.cost_columns(ident), image=self.thumbnails.get(ident) or '')
         if selected and self.list.exists(selected[0]):
             self.list.selection_set(selected[0])
+        self.library_count.set(f'{len(self.list.get_children())} mods')
         self.selected()
 
     def selected(self, _=None):
         self.update_bulk_controls()
+        self.update_detail()
         if self.busy:
             return
         selection = self.list.selection()
         self.action.state(['!disabled'] if self.setup_ready and selection and self.can_translate(selection[0]) else ['disabled'])
+        if not self.setup_ready:
+            # Keep the setup failure and its recovery instructions visible while browsing.
+            return
         if selection:
             self.folder = APP / 'projects' / selection[0]
             if selection[0] != self.current_selection:
-                self.status.set('Ready to translate ' + self.mods[selection[0]]['name'])
+                mod = self.mods[selection[0]]
+                saved = self.saved.get(selection[0])
+                if saved and saved.get('complete'):
+                    self.status.set(tick(saved) + display_name(mod, self.titles) +
+                                    ' already has a full saved translation. Existing text is reused.')
+                else:
+                    self.status.set('Ready to translate ' + display_name(mod, self.titles))
             if not self.can_translate(selection[0]):
                 self.status.set(self.cost_columns(selection[0])[1] + '. Destiny-menu translation and installing saved translations remain available.')
             self.current_selection = selection[0]
         else:
             self.current_selection = None
 
-    def translate(self):
+    def translate(self, retranslate=False):
         if self.busy:
             self.stop.set()
             self.update_bulk_controls()
@@ -473,8 +588,11 @@ class App(tk.Tk):
         self.bar.start(14)
         def job():
             try:
-                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set, game=self.game, concurrency=concurrency, batch_size=batch_size)
-                self.events.put(('result', result))
+                if not retranslate:
+                    self.prepare_shared_mod(mod)
+                result = run_job(mod, self.folder, lambda message: self.events.put(('progress', message)), self.stop.is_set,
+                                 game=self.game, concurrency=concurrency, batch_size=batch_size, retranslate=retranslate)
+                self.events.put(('result', (mod['id'], result)))
             except InterruptedError:
                 self.events.put(('error', 'Cancelled. Previously saved translations are kept.'))
             except Exception as exc:
@@ -560,7 +678,8 @@ class App(tk.Tk):
             try:
                 result = run_bulk(plan['mods'], APP / 'projects', limit,
                                   lambda p, m: self.events.put(('bulk_progress', (p, m))),
-                                  self.stop.is_set, game=game, concurrency=concurrency, batch_size=batch_size)
+                                  self.stop.is_set, game=game, concurrency=concurrency, batch_size=batch_size,
+                                  prepare_mod=self.prepare_shared_mod)
                 self.events.put(('bulk_result', result))
             except Exception as exc:
                 self.events.put(('error', str(exc)))
@@ -658,54 +777,118 @@ class App(tk.Tk):
                 self.folder = APP / 'projects'
                 self.status.set(bulk_summary(value))
                 self.result_button.pack(before=self.action, pady=(10, 0))
+                self.refresh_saved()
+                continue
+            if kind == 'update_progress':
+                self.update_status.set(value)
+                continue
+            if kind == 'update_error':
+                self.update_running = False
+                self.update_button.state(['!disabled'])
+                self.update_status.set('Updates: ' + value)
+                continue
+            if kind == 'update_checked':
+                self.update_running = False
+                update, manual = value
+                self.available_update = update
+                if update:
+                    self.update_status.set(f'Version {update["version"]} is available. Install it when you are ready.')
+                    self.update_button.pack(side='right')
+                elif manual:
+                    self.update_status.set('You have the latest version.')
+                continue
+            if kind == 'update_prepared':
+                self.prepared_update = value
+                self.finish_update()
+                continue
+            if kind == 'shared_done':
+                self.shared_running = False
+                if value:
+                    self.update_status.set('Shared library: ' + value)
+                self.start_titles()
                 continue
             if kind == 'mods':
-                self.busy = False
-                from destinies import destiny_mod
-                value.append(destiny_mod(self.game))
-                self.mods = {m['id']: m for m in value}
+                self.scanning_mods = False
+                mods, statuses = value
+                self.mods = {m['id']: m for m in mods}
+                apply_titles(list(self.mods.values()), self.titles)
+                self.saved = statuses
+                self.refresh_thumbnails()
                 self.refresh_estimates()
-                self.status.set('Click a mod to get started.' if value else 'No downloaded mods found. Subscribe to a mod in Steam Workshop, then refresh.')
-            else:
-                self.finish()
-                if kind == 'error':
-                    self.status.set(value)
-                elif kind == 'destinies':
-                    mod, report, changed = value
-                    self.mods[mod['id']] = mod
-                    self.search.set('')
-                    self.render()
-                    self.list.selection_set(mod['id'])
-                    self.list.see(mod['id'])
-                    self.selected()
-                    message = f'Found {report["missing_texts"]:,} untranslated destiny texts. Click Translate and install to fill them.'
-                    if report['unresolved_fields']:
-                        message += f' {len(report["unresolved_fields"]):,} fields still need in-game detection.'
-                    if changed or not report['runtime_inventory']:
-                        message += ' Restart the game, open character creation, then scan again to include all loaded destinies.'
-                    if report.get('runtime_warnings'):
-                        message = report['runtime_warnings'][0] + f' Downloaded tables have {report["missing_texts"]:,} missing texts.'
-                    self.status.set(message)
-                    self.result_button.pack(before=self.action, pady=(10, 0))
+                self.refresh_shared()
+                if self.setup_ready and not self.busy:
+                    self.status.set('Click a mod to get started.' if mods else 'No downloaded mods found. Subscribe to a mod in Steam Workshop, then refresh.')
+            elif kind == 'mods_error':
+                self.scanning_mods = False
+                self.title_status.set(value)
+            elif kind == 'title_progress':
+                self.title_status.set(value)
+            elif kind == 'titles':
+                # Saved titles arrive one batch at a time; the list updates in place.
+                self.titles = value
+                apply_titles(list(self.mods.values()), self.titles)
+                self.render()
+            elif kind == 'titles_done':
+                self.title_running = False
+                if value.get('error'):
+                    self.title_status.set('Mod titles could not be translated: ' + value['error'] + ' Retry with Options → Refresh mods.')
+                elif value.get('failed'):
+                    self.title_status.set('Some mod titles still need translation. Retry with Options → Refresh mods.')
                 else:
-                    state = value['state']
-                    if state == 'success':
-                        installed = value.get('installation')
-                        if installed:
-                            self.status.set(installation_message(installed))
-                        else:
-                            self.status.set('Translations saved, but installation did not complete. Use Options → Install saved translations.')
-                    elif state == 'empty':
-                        self.status.set('No readable Chinese text was found. You can check the coverage report in the saved files.')
-                    elif state == 'cancelled':
-                        self.status.set('Cancelled. Saved progress will be reused next time.')
+                    self.title_status.set('')
+                self.update_detail()
+                if self.title_refresh_pending:
+                    self.start_titles()
+            elif kind == 'saved':
+                self.saved = value
+                self.render()
+            elif kind == 'result':
+                ident, result = value
+                self.saved[ident] = job_status(ident, result)
+                self.finish()
+                self.render()
+                state = result['state']
+                if state == 'success':
+                    installed = result.get('installation')
+                    if installed:
+                        self.status.set(installation_message(installed))
                     else:
-                        installed = value.get('installation')
-                        if installed:
-                            self.status.set(installation_message(installed, partial=True))
-                        else:
-                            self.status.set(f'{value["count"]:,} translations saved. Some text still needs review; see the saved files.')
-                    self.result_button.pack(before=self.action, pady=(10, 0))
+                        self.status.set('Translations saved, but installation did not complete. Use Options → Install saved translations.')
+                elif state == 'empty':
+                    self.status.set('No readable Chinese text was found. You can check the coverage report in the saved files.')
+                elif state == 'cancelled':
+                    self.status.set('Cancelled. Saved progress will be reused next time.')
+                else:
+                    installed = result.get('installation')
+                    if installed:
+                        self.status.set(installation_message(installed, partial=True))
+                    else:
+                        self.status.set(f'{result["count"]:,} translations saved. Some text still needs review; see the saved files.')
+                self.result_button.pack(before=self.action, pady=(10, 0))
+            elif kind == 'error':
+                self.finish()
+                self.status.set(value)
+                self.refresh_saved()
+            elif kind == 'destinies':
+                self.finish()
+                mod, report, changed = value
+                self.mods[mod['id']] = mod
+                apply_titles([mod], self.titles)
+                self.search.set('')
+                self.render()
+                self.list.selection_set(mod['id'])
+                self.list.see(mod['id'])
+                self.selected()
+                message = f'Found {report["missing_texts"]:,} untranslated destiny texts. Click Translate and install to fill them.'
+                if report['unresolved_fields']:
+                    message += f' {len(report["unresolved_fields"]):,} fields still need in-game detection.'
+                if changed or not report['runtime_inventory']:
+                    message += ' Restart the game, open character creation, then scan again to include all loaded destinies.'
+                if report.get('runtime_warnings'):
+                    message = report['runtime_warnings'][0] + f' Downloaded tables have {report["missing_texts"]:,} missing texts.'
+                self.status.set(message)
+                self.result_button.pack(before=self.action, pady=(10, 0))
+                self.refresh_saved()
         if latest:
             self.status.set(latest)
         self.after(100, self.poll)
@@ -740,6 +923,7 @@ class App(tk.Tk):
             project['mod'] = self.mods[selection]
             result = install(project, self.game)
             self.status.set(installation_message(result))
+            self.refresh_saved()
         except FileNotFoundError:
             self.status.set('No saved translation project yet. Click Translate and install first.')
         except Exception as exc:
@@ -757,6 +941,9 @@ class App(tk.Tk):
             self.status.set('Could not remove translations: ' + str(exc))
 
     def close(self):
+        if self.update_running and self.prepared_update is None:
+            self.update_stop.set()
+        self.title_stop.set()
         if self.collecting_logs:
             self.log_status.set('Finishing log collection. Close again when done.')
             return
@@ -764,5 +951,19 @@ class App(tk.Tk):
             self.stop.set()
             self.status.set('Stopping setup safely. Close again when stopped.' if self.setting_up else 'Waiting for requests already sent to finish and save. Close again when stopped.')
             return
+        if self.title_running:
+            self.title_status.set('Finishing the title request and saving it. Close again when it has stopped.')
+            return
         self.estimate_stop.set()
+        self.title_stop.set()
         self.destroy()
+
+    def destroy(self):
+        # Cancel Tk callbacks when this window closes, including in GUI tests
+        # that open another window in the same interpreter.
+        try:
+            for callback in self.tk.call('after', 'info'):
+                self.after_cancel(callback)
+        except tk.TclError:
+            pass
+        super().destroy()

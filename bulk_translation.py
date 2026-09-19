@@ -55,7 +55,7 @@ def plan_bulk(mods, estimates, limit, limited=False):
             'total_pence': str(sum((amount(estimates[m['id']]) for m in matches), Decimal(0)))}
 
 
-def run_bulk(mods, project_root, limit, progress, stop, *, game, concurrency=None, batch_size=None):
+def run_bulk(mods, project_root, limit, progress, stop, *, game, concurrency=None, batch_size=None, prepare_mod=None):
     from extractor import atomic_json
     from diagnostics import redact
     from mod_workflow import run_job
@@ -69,11 +69,14 @@ def run_bulk(mods, project_root, limit, progress, stop, *, game, concurrency=Non
         if stop():
             report['state'] = 'cancelled'
             break
-        name = mod.get('name', mod['id'])
+        # Prefer the saved English title so the queue matches the mod list.
+        name = mod.get('title') or mod.get('name', mod['id'])
         def update(message):
             progress(100 * index / max(1, len(mods)), f'{index + 1}/{len(mods)} · {name} · {message}')
         try:
             update('Checking current price and saved translations…')
+            if prepare_mod:
+                prepare_mod(mod)
             result = run_job(mod, root / mod['id'], update, stop, game=game,
                              concurrency=concurrency, batch_size=batch_size, max_pence=limit)
         except InterruptedError:

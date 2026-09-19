@@ -8,6 +8,18 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, 'w', encoding='utf-8')
 
 def main():
+    if '--apply-update' in sys.argv:
+        from app_updates import apply_update
+        try:
+            apply_update(sys.argv[sys.argv.index('--apply-update') + 1])
+        except Exception as exc:
+            from app_config import data_dir
+            from extractor import atomic_json
+            from tkinter import messagebox
+            atomic_json(data_dir() / 'update-last.json', {'state': 'failed', 'error': str(exc)})
+            messagebox.showerror('App update failed', 'The update could not finish. Reopen your existing app and try again.\n\n' + str(exc))
+            raise
+        return
     if '--setup-game' in sys.argv:
         from app_config import save_preferences
         from game_setup import validate_game

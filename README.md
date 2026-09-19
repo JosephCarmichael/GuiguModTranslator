@@ -1,5 +1,32 @@
 # Guigu Mod Translator
 
+**GitHub updates and shared translations (1.4.0):** the redesigned mod library
+shows local mod artwork, saved translation status and a selected-mod preview.
+**Translate mod again** uses your current settings and backs up the previous
+wording. **Title again** refreshes one saved mod title. Valid shared titles and
+translations are reused automatically, with local edits taking priority.
+
+The Windows app offers newer GitHub releases through **Install update**, verifies
+the download and keeps your projects, titles and API settings. The repository
+is private: friends need an invitation and **Options → GitHub access** for updates
+and new shared-library downloads. The bundled library works offline. See
+[publishing, account setup and shared-library storage](RELEASES_AND_SHARING.md).
+
+**Mod titles and translation ticks (1.3.8):** the mod list translates every
+Chinese mod name into English automatically, on the first launch and whenever a
+mod is renamed. The English title and the original Chinese name share one row,
+so search still matches both. Titles are saved in
+`mod-titles.json` inside the app data folder, so they persist and cost nothing
+again. A tick (✓) marks a mod that already holds a complete saved translation.
+See [mod title validation](MOD_TITLES_VALIDATION.md).
+
+**Personal launcher:** `GuiguModTranslator.bat` starts **your** Personal edition
+from this folder. A source run has every Friends feature and no 5p shared-key
+limit; the API key choice (shared or your own OpenRouter key) is unchanged. The
+friends ZIP keeps its 5p limit. If Python is missing, the launcher shows installation instructions. It does not
+fall back to the older EXE, which may lack these features. Mods are listed even
+when game setup fails; translation and installation still require successful setup.
+
 **Shared-key cap (1.3.7):** full-mod estimates up to and including **5p (£0.05)**
 are now allowed, including the Translate all queue.
 
@@ -47,8 +74,10 @@ shared account. See [personal-key validation](PERSONAL_API_KEY_VALIDATION.md).
 
 **Launch repair (1.3.2):** fixes the bundled MelonLoader silently closing before
 startup when the Chinese game-folder name cannot be read with Windows' character
-settings. Extract the updated Friends app outside the game folder, for example
-into Downloads. If prompted by the setup bar, choose **Steam → Exit**. Setup
+settings. Setup first tries the existing Windows ASCII short name for the game folder.
+This repairs Steam’s launch path without moving files and also works with the
+Personal app inside the game folder. If short names are unavailable, extract the
+updated app outside the game folder, for example into Downloads, for the rename fallback. If prompted by the setup bar, choose **Steam → Exit**. The fallback
 renames the installation to `TaleOfImmortal`, updates Steam's installation record,
 and restarts Steam for a live translator check. Game binaries, saves, mods and
 translations are preserved. An old-path junction preserves saved mod references;

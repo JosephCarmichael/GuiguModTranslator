@@ -64,6 +64,16 @@ class SetupTests(unittest.TestCase):
         self.assertEqual(values, sorted(values))
         self.assertEqual(values[-1], 45)
 
+    def test_destination_accepts_an_alias_for_the_game_root(self):
+        import os
+        alias = self.root / 'game-alias'
+        if os.name == 'nt':
+            import _winapi
+            _winapi.CreateJunction(str(self.game), str(alias))
+        else:
+            alias.symlink_to(self.game, target_is_directory=True)
+        self.assertEqual(setup.destination(alias, 'Mods/test.dll'), self.game / 'Mods/test.dll')
+
     def test_corrupt_archive_rejected_before_game_changes(self):
         with (self.assets / 'Cpp2IL.zip').open('ab') as f: f.write(b'corruption')
         with self.assertRaisesRegex(ValueError, 'integrity'):

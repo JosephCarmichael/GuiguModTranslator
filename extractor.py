@@ -36,9 +36,14 @@ RICH_TAG = r'(?i:</?(?:' + RICH_TAG_NAMES + r')(?=[\s=/>])[^<>\n]*>|<\#[0-9a-f]{
 TOKENS = re.compile(RICH_TAG + r'|[<>]|\d+(?:\.\d+)?%(?![A-Za-z_])|\{\{[^{}]*\}\}|\{[^{}\n]+\}|\\[A-Za-z]+\[[^\]]*\]|\\[nrt]|%(?:\d+\$)?[-+0 #]*\d*(?:\.\d+)?[sdfiu]|\[[A-Za-z_][\w.:=-]*\]')
 
 
-def decode(data: bytes) -> str:
+def decode_mod_bytes(data: bytes) -> bytes:
     if data.startswith(MAGIC):
         data = bytes((v - MOD_KEY[i % len(MOD_KEY)]) & 255 for i, v in enumerate(data[len(MAGIC):]))
+    return data
+
+
+def decode(data: bytes) -> str:
+    data = decode_mod_bytes(data)
     if data.startswith((b'\xff\xfe', b'\xfe\xff')):
         return data.decode('utf-16')
     if b'\0' in data[:100]:
@@ -350,7 +355,8 @@ class Scanner:
             report = {'file': rel, 'status': 'ignored'}
             self.files.append(report)
             if index % 25 == 0:
-                self.progress(f'{self.mod["name"]}: {index + 1} files, {len(self.units):,} strings — {rel}')
+                label = self.mod.get('title') or self.mod['name']
+                self.progress(f'{label}: {index + 1} files, {len(self.units):,} strings — {rel}')
             if suffix in MEDIA:
                 report['status'] = 'media_review'
                 report['reason'] = 'Media: visual/OCR or audio review needed; no claim of textual coverage.'
@@ -441,7 +447,7 @@ def extract(mod, folder, progress=None, stop=None):
             previous = old_units.get(u['id'])
             if previous and previous['source'] == u['source'] and previous['translation']:
                 u['translation'], u['status'] = previous['translation'], previous['status']
-                for field in ('engine', 'model'):
+                for field in ('engine', 'model', 'retranslation_pending'):
                     if field in previous:
                         u[field] = previous[field]
         current = {u['id'] for u in project['units']}

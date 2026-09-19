@@ -64,6 +64,7 @@ with tempfile.TemporaryDirectory(prefix='GuiguLaunchRepair-') as directory:
     # guard is mocked; the rename, manifest edit and Windows junction are real.
     with patch('launch_repair.data_dir', return_value=appdata), \
          patch('app_config.data_dir', return_value=appdata), \
+         patch('launch_repair.short_game_path', return_value=None), \
          patch('launch_repair.steam_running', return_value=False):
         target = launch_repair.repair_game_path(game, lambda *_: None, lambda: False)
     after = launch_from_manifest()

@@ -24,6 +24,13 @@ class CostTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.folder = Path(self.temp.name)
+        # Policy tests must not inherit a real personal key from this machine.
+        profile = patch('app_config.service_profile', return_value={'personal_key': False})
+        profile.start()
+        self.addCleanup(profile.stop)
+        translation_profile = patch('translation.service_profile', return_value={'personal_key': False})
+        translation_profile.start()
+        self.addCleanup(translation_profile.stop)
 
     def test_five_pence_boundary_is_not_half_penny_or_rounded(self):
         self.assertTrue(full_translation_allowed({'pence': '5', 'complete': True}))
@@ -58,8 +65,9 @@ class CostTests(unittest.TestCase):
             with self.assertRaisesRegex(PermissionError, '5p'):
                 translate(p, self.folder)
             p['units'][0]['translation'] = 'Saved'
+            self.assertEqual(translate(p, self.folder)['total'], 0)
             with self.assertRaises(PermissionError):
-                translate(p, self.folder)
+                translate(p, self.folder, retranslate=True)
             request.assert_not_called()
         self.assertFalse((self.folder/'project.json').exists())
 

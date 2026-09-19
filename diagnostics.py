@@ -29,6 +29,7 @@ GAME_FILES = (
 
 
 def redact(text):
+    text = re.sub(r'\b(?:github_pat_|gh[pousr]_)[A-Za-z0-9_]{12,}', '[REDACTED GITHUB TOKEN]', text)
     text = re.sub(r'\bsk-(?:or-)?[A-Za-z0-9_-]{12,}', '[REDACTED KEY]', text)
     text = re.sub(r'(?i)(bearer\s+)[A-Za-z0-9._~+/-]+=*', r'\1[REDACTED]', text)
     text = re.sub(r'''(?i)((?:["']?)(?:api[_-]?key|access[_-]?token|authorization)(?:["']?)\s*[:=]\s*)(?:"[^"\r\n]*"|'[^'\r\n]*'|[^\s,&}\r\n]+)''',

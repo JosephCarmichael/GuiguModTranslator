@@ -7,6 +7,12 @@ from desktop import App
 from extractor import APP, atomic_json
 from PIL import ImageGrab
 
+def offline_batch(texts,*args,**kwargs):
+    # Stand-in provider: a smoke check must not spend credit on mod titles.
+    return [text for text in texts]
+
+paid=patch('translation.request_batch',side_effect=offline_batch)
+paid.start()
 app=App()
 try:
     deadline=time.monotonic()+20
@@ -46,3 +52,4 @@ try:
     print('Simple window checks passed')
 finally:
     app.destroy()
+    paid.stop()

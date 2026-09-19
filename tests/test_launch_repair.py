@@ -31,6 +31,7 @@ class LaunchRepairTests(unittest.TestCase):
         self.patch('launch_repair.data_dir', return_value=self.data)
         self.save = self.patch('launch_repair.save_preferences')
         self.patch('launch_repair.unsupported_path', side_effect=lambda p: not str(p).isascii())
+        self.short_path = self.patch('launch_repair.short_game_path', return_value=None)
         self.steam = self.patch('launch_repair.steam_running', return_value=False)
         self.processes = self.patch('game_setup.game_processes', return_value=set())
         if os.name != 'nt':
@@ -67,6 +68,42 @@ class LaunchRepairTests(unittest.TestCase):
         self.assertEqual(self.manifest.read_bytes(), self.before)
         self.assertFalse(repair.is_junction(self.game))
         self.assertFalse((self.game.parent / 'TaleOfImmortal').exists())
+
+    def test_manifest_alias_to_chinese_folder_is_repaired_and_preserved(self):
+        alias = self.game.with_name('TaleOfImmortal')
+        repair.make_junction(self.game, alias)
+        before = self.before.replace('鬼谷八荒'.encode(), b'TaleOfImmortal')
+        self.manifest.write_bytes(before)
+        result = self.run_repair()
+        self.assertEqual(result.name, 'TaleOfImmortal-2')
+        self.assertEqual(alias.resolve(), result.resolve())
+        self.assertEqual(self.game.resolve(), result.resolve())
+        self.assertEqual(self.manifest.read_bytes(), before.replace(b'"TaleOfImmortal"', b'"TaleOfImmortal-2"'))
+        self.assertEqual(self.exe.read_bytes(), b'game binary must stay identical')
+
+    def test_short_path_repairs_manifest_with_app_inside_game_and_reuses_it(self):
+        alias = self.game.with_name('SHORT~1')
+        repair.make_junction(self.game, alias)
+        self.short_path.return_value = alias
+        self.patch('launch_repair.data_dir', return_value=self.game / 'translator')
+        result = self.run_repair()
+        self.assertEqual(result, alias)
+        self.assertFalse(repair.is_junction(self.game))
+        self.assertEqual(alias.resolve(), self.game)
+        self.assertEqual(self.manifest.read_bytes(), self.before.replace('鬼谷八荒'.encode(), b'SHORT~1'))
+        self.steam.return_value = True
+        self.assertEqual(self.run_repair(), alias)
+
+    def test_short_path_preference_failure_recovers_from_committed_manifest(self):
+        alias = self.game.with_name('SHORT~1')
+        repair.make_junction(self.game, alias)
+        self.short_path.return_value = alias
+        self.save.side_effect = OSError('disk full')
+        with self.assertRaises(OSError):
+            self.run_repair()
+        self.assertTrue((self.data / 'launch-repair-pending.json').exists())
+        self.save.side_effect = None
+        self.assertEqual(self.run_repair(), alias)
 
     def test_waits_for_game_to_be_saved_and_closed(self):
         self.processes.return_value = {123}

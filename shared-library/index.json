@@ -1,0 +1,83 @@
+{
+  "schema": 1,
+  "mods": {
+    "6a16764241c5dfec4f35fb1d4f479ade88a0bbfe3e8151dba4c611eab0428bb2": {
+      "sha256": "67800fff63de062e17e67ca71d3604a7240488f32503129f80dca2893a79c812",
+      "entries": 48,
+      "bytes": 6886
+    },
+    "6ea027b4d1947035148748cb43dcd73ad4aef6e3d37e9564a279bbfc3b149818": {
+      "sha256": "5a7048ca40c697c2ca3bb7ee866ac148e8b97dffecc2893823d0066db1ed68ca",
+      "entries": 410,
+      "bytes": 20376
+    },
+    "e0a19bb430f9a6fbd80b7d5e490a8432c1dd1c7dd93995f4c84b152688b7dae2": {
+      "sha256": "7598ca95a45577081c4af11d4b27c412ac0a8c6508f75581823f28d270a2c709",
+      "entries": 909,
+      "bytes": 85223
+    },
+    "062816b347fbce3cc6594e69851042fde1efdf4ac6d8a046df57383439dd8e67": {
+      "sha256": "5cd96a1779576b3d2a0945a0873e6ab9767c874505cfae0827ae0be55721da78",
+      "entries": 16,
+      "bytes": 2418
+    }
+  },
+  "titles": {
+    "6a16764241c5dfec4f35fb1d4f479ade88a0bbfe3e8151dba4c611eab0428bb2": {
+      "source": "[无邪]万古神话",
+      "title": "[Wuxie] Eternal Myth"
+    },
+    "44fca49a6b0e108c0b723cac4dde96601c111bfd4b36fefa188d2fcc7bedc156": {
+      "source": "【Sorry】Fatury框架",
+      "title": "【Sorry】Fatury Framework"
+    },
+    "6ea027b4d1947035148748cb43dcd73ad4aef6e3d37e9564a279bbfc3b149818": {
+      "source": "【软甜废娇媚配音剧情】动态立绘",
+      "title": "【Soft Sweet Waste Charming Voice Story】Dynamic Portrait"
+    },
+    "e0a19bb430f9a6fbd80b7d5e490a8432c1dd1c7dd93995f4c84b152688b7dae2": {
+      "source": "八荒绝色榜",
+      "title": "Eight Desolations Beauty Ranking"
+    },
+    "0f5373317eae7331a12cf9417dd45bc881f84784cfef038aaad1b5dc8a9ef3f6": {
+      "source": "【Addk1k】三神器全开",
+      "title": "【Addk1k】Three Divine Artifacts Fully Unlocked"
+    },
+    "86b77fcb2107c8f7ec6c21f0c6c141a80a1cd0439e6ca053c15fee4741e51225": {
+      "source": "【执余】流派框架",
+      "title": "【Zhiyu】School Framework"
+    },
+    "51a3255f4e50d2508d51bb6a39cd92f869ae25fc388f554d0c0c21ed9c1065a9": {
+      "source": "[龙猫]道♥商店",
+      "title": "[Totoro] Dao♥ Shop"
+    },
+    "25ec968b76bdc2202e99419d4dc8dc5862cbb31bf142903fefe15cebed35ebd2": {
+      "source": "[龙猫]货◎商店",
+      "title": "[Totoro] Goods◎ Shop"
+    },
+    "b067c041f87c7a9f76fd67c9bd41ffcbe7a4beaeea53b2d4ccf4e1c88a6c1089": {
+      "source": "【软甜废】双修视频示例工程",
+      "title": "【Soft Sweet Waste】Dual Cultivation Video Example Project"
+    },
+    "62348547343e9a8c78e05a60e6f657607a5fc5392a6bf3c4b5ffe2fd59f9d975": {
+      "source": "Mod制作拓展",
+      "title": "Mod Creation Expansion"
+    },
+    "f9c22d2e1985f51f214053fd241de295f3aed41ab23c7729ee6e847568dd71a1": {
+      "source": "【月之门】天命气运多选(Multiple Fate Selection)",
+      "title": "【Gate of Moon】Multiple Fate Selection"
+    },
+    "a5c48593ff0695387b77f19977e302ab810f4f320dc3430777f2f2dc16891a54": {
+      "source": "【霜】氪金系统",
+      "title": "【Frost】Pay-to-Win System"
+    },
+    "c05a00b8e496ec6d0c175a734f3ef6a0d3a9dcc382467011bc58394919db19ee": {
+      "source": "【姜宁霞】白凤",
+      "title": "【Jiang Ningxia】White Phoenix"
+    },
+    "143b1e82b6976e8a81a4ac69e7a8ae20160670e83f8781e521f66df53bffd451": {
+      "source": "【哈基康御-好感度与堕落值变化立绘】",
+      "title": "【Hajikangyu - Favorability and Corruption Value Change Portrait】"
+    }
+  }
+}

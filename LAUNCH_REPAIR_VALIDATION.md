@@ -1,3 +1,39 @@
+# Launch repair update — 15 September 2026
+
+The Personal installation now uses Windows' existing ASCII short folder name
+(`DF1D~1`) in Steam's `installdir`. The game directory stays in place. Setup
+prefers this repair where available; the earlier rename/junction strategy remains
+as a fallback. A Steam manifest that names a link to the game is accepted only
+when that link resolves to the exact validated game directory.
+
+`destination()` now resolves the game root before checking output containment,
+so the short name does not produce a false "outside the game" error. Internal
+reparse-point rejection and traversal checks still apply.
+
+Validation:
+
+- 169 Windows unit tests pass, including manifest aliases, short-name repair
+  while the app is inside the game, interrupted preference saving, repeat startup,
+  and setup destinations reached through a root alias.
+- `evidence/launch-short-path-native.json` reproduces the original silent exit
+  with the exact bundled proxy, then reaches the native test program through
+  the repaired manifest path without moving files.
+- The real Steam installation was repaired. Its executable hash is unchanged;
+  the original game and translator paths remain valid. Manifest backups are in
+  `%LOCALAPPDATA%\GuiguModTranslatorRepair\2026-09-15\launch-repairs`.
+- Real game setup installed the current translation plugin and confirmed a live
+  process running runtime version 1.2.3 with registered hooks and no startup errors.
+- All 14 Chinese mod titles were translated and saved through the configured
+  API. Title validation now permits translated leading `[author]` labels while
+  preserving runtime placeholder checks.
+
+The short-name repair can be undone with Steam closed by restoring only the
+recorded original `installdir` value in its current manifest. No directories need
+moving for this strategy. The historical rename instructions below apply only
+to repairs whose journal strategy is `rename` (or older journals without strategy).
+
+---
+
 # Friend's instant Steam exit — 1.3.2 repair
 
 ## Diagnosis

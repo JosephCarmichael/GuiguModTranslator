@@ -1,0 +1,9 @@
+{
+  "state": "repaired",
+  "strategy": "short_path",
+  "source": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\\u9b3c\u8c37\u516b\u8352",
+  "target": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\DF1D~1",
+  "game_binary_unchanged": true,
+  "old_path_preserved": true,
+  "backup_folder": "C:\\Users\\chcar\\AppData\\Local\\GuiguModTranslatorRepair\\2026-09-15\\launch-repairs"
+}

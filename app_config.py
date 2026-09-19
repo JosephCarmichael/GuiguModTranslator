@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 RESOURCE_DIR = Path(__file__).resolve().parent
-APP_VERSION = '1.3.7'
+APP_VERSION = '1.4.0'
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else RESOURCE_DIR
 CONCURRENCY_CHOICES = (1, 4, 8, 16, 32, 64, 128)
 DEFAULT_CONCURRENCY = 16

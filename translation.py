@@ -235,7 +235,7 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
                                    f'{MAX_REQUEST_ATTEMPTS} attempts and automatic slowdown. Progress is saved; '
                                    'see request-errors.jsonl in the saved project. Resume when the service recovers.')
 
-def translate(project, folder, target='en', progress=None, stop=None, glossary=None, include_review=False, concurrency=None, batch_size=None):
+def translate(project, folder, target='en', progress=None, stop=None, glossary=None, include_review=False, concurrency=None, batch_size=None, retranslate=False):
     stop = stop or (lambda: False)
     progress = progress or (lambda _: None)
     concurrency = translation_concurrency() if concurrency is None else concurrency
@@ -245,18 +245,34 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     if type(batch_size) is not int or batch_size not in BATCH_SIZE_CHOICES:
         raise ValueError('Entries per request must be one of: ' + ', '.join(map(str, BATCH_SIZE_CHOICES)))
     from translation_cost import enforce_translation_policy
-    # Use the same credential snapshot for the spending policy and every request.
-    profile = service_profile()
-    enforce_translation_policy(project, batch_size, profile=profile)
-    units = [u for u in project['units'] if not u['translation'] and u['category'] != 'technical'
+    if not retranslate:
+        from shared_library import apply_shared
+        reused = apply_shared(project, target)
+        if reused:
+            save_project(project, folder)
+            progress(f'Reused {reused:,} shared translations without an API request.')
+    units = [u for u in project['units'] if (retranslate or not u['translation'] or u.get('retranslation_pending')) and u['category'] != 'technical'
              and (include_review or u['category'] == 'player_text')]
     existing = sum(bool(u['translation']) for u in project['units'] if u['category'] != 'technical'
                    and (include_review or u['category'] == 'player_text'))
     if not units:
         return {'translated': 0, 'failed': 0, 'total': 0, 'cancelled': False}
+    # Saved/shared text requires neither credit nor an API key. If any paid work
+    # remains, the full-mod cap and the request use the same credential snapshot.
+    profile = service_profile()
+    enforce_translation_policy(project, batch_size, profile=profile)
     terms = json.loads(Path(glossary).read_text(encoding='utf-8-sig')) if glossary else None
     if terms is not None and not isinstance(terms, dict):
         raise ValueError('The glossary must be a JSON dictionary of source terms and translations.')
+    if retranslate:
+        from extractor import atomic_json
+        import uuid
+        backup = Path(folder) / 'retranslation-backups' / (datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S-') + uuid.uuid4().hex[:8] + '.json')
+        atomic_json(backup, project)
+        for unit in units:
+            unit['retranslation_pending'] = True
+            unit['status'] = 'needs_review'
+        save_project(project, folder)
     done = failed = processed = 0
     batches, batch, chars = [], [], 0
     for unit in units:
@@ -307,6 +323,7 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
                 continue
             unit.update(translation=result, status='needs_review' if CJK.search(result) else 'machine',
                         engine=DEFAULT_ENGINE, model=profile['model'])
+            unit.pop('retranslation_pending', None)
             unit.pop('translation_error', None)
             done += 1
         processed += len(batch)

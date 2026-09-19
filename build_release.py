@@ -39,6 +39,7 @@ def build(onefile, output_dir=None, edition="friends"):
             '--add-data', str(runtime/'GuiguModTranslation.dll')+';runtime',
             '--add-data', str(runtime/'manifest.json')+';runtime',
             '--add-data', str(bootstrap)+';bootstrap',
+            '--add-data', str(ROOT/'shared-library')+';shared-library',
             '--workpath', str(Path(tempfile.gettempdir())/('guigu-build-'+build_id+'-'+mode)),
             '--distpath', str(output_dir), '--specpath', str(policy.parent), str(ROOT/'entry.py')]
     with (ROOT/'projects'/('build-'+mode+'.log')).open('w',encoding='utf-8') as log:
@@ -79,7 +80,7 @@ def package(exe, side_by_side=False, edition="friends"):
     assert embedded==expected
     assert json.loads(contents.extract('build_policy.json')) == {'edition': edition}
     assert not any(name.replace('\\','/').endswith('/service.json') or name=='service.json'
-                   or name.replace('\\','/').endswith(('openrouter-access.json', 'translation-balances.json'))
+                   or name.replace('\\','/').endswith(('openrouter-access.json', 'github-access.json', 'translation-balances.json'))
                    or name.replace('\\','/').startswith('projects/') for name in contents.toc)
     suffix = '-Updated-'+datetime.now().strftime('%Y%m%d-%H%M%S') if side_by_side else ''
     destination=ROOT/'release'/('GuiguModTranslator-'+edition.title()+suffix)
@@ -105,6 +106,15 @@ def package(exe, side_by_side=False, edition="friends"):
         '4. Choose Translate destiny menu, or select a mod and click Translate\n'
         '   and install. Close the game and use Launch game to apply changes.\n\n'
         'No loader installation, file copying, Python setup or API-key entry.\n'
+        'Updates appear in the app when a new GitHub release is ready. Click\n'
+        'Install update to download, verify and restart; your saved work stays.\n'
+        'For private releases, use Options > GitHub access once with your own\n'
+        'read-only token after the repository owner invites your account.\n'
+        'GitHub access is separate from your translation API key.\n\n'
+        'Mod preview images come from your installed mods. Select a mod to\n'
+        'see its saved progress. Translate mod again makes new paid requests\n'
+        'using your settings and saves a backup of the previous translation.\n'
+        'Matching shared translations and titles are reused automatically.\n\n'
         'If Windows asks for permission, click Yes. Missing Microsoft runtimes\n'
         'are installed automatically; Windows may require a PC restart.\n'
         'If the game is already open and files need updating, save and close it.\n'
@@ -126,6 +136,9 @@ def package(exe, side_by_side=False, edition="friends"):
         'The shared-key cap still applies; your personal key lifts that cap.\n'
         'Cancel all keeps saved progress. Repeating reuses existing translations.\n'
         'App updates keep saved translations in the same Windows user-data folder.\n\n'
+        'MOD TITLES (1.3.8): Chinese mod names are translated to English and saved\n'
+        'on this PC, so later launches cost nothing. A tick beside a mod means it\n'
+        'already has a complete saved translation.\n\n'
         'BALANCE (1.3.6): The top-left balance shows your OpenRouter key allowance\n'
         'as a GBP estimate, with the original dollar amount underneath. It drops\n'
         'as billed responses arrive and refreshes from OpenRouter. Saved text\n'
@@ -216,20 +229,26 @@ if __name__=='__main__':
     parser.add_argument('--offline', action='store_true', help='Skip paid live API checks')
     parser.add_argument('--side-by-side', action='store_true', help='Build new paths without replacing existing executables or ZIPs')
     parser.add_argument('--edition', choices=('friends', 'personal'), default='friends')
+    parser.add_argument('--use-prebuilt-runtime', action='store_true', help='Use the verified own-code runtime for hosted builds without a game installation')
     args = parser.parse_args()
     from app_config import installed_game
     game = installed_game()
-    if game is None:
+    if game is None and not args.use_prebuilt_runtime:
         raise RuntimeError('A local game installation is required to build the runtime loader.')
     (ROOT/'projects').mkdir(exist_ok=True)
-    subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
-                    str(ROOT/'loader/Build.ps1'), '-GameRoot', str(game), '-Test'], check=True)
+    if args.use_prebuilt_runtime:
+        from runtime_bundle import restore_runtime
+        restore_runtime()
+    else:
+        subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+                        str(ROOT/'loader/Build.ps1'), '-GameRoot', str(game), '-Test'], check=True)
     output = ROOT/'dist'/(args.edition+'-update-'+datetime.now().strftime('%Y%m%d-%H%M%S')) if args.side_by_side else ROOT/'dist'
     preview=build(False, output, args.edition)
     verify(preview,'frozen-onedir-check', edition=args.edition)
     final=build(True, output, args.edition)
     verify(final,'frozen-onefile-check', edition=args.edition)
-    verify_real_mod(final)
+    if not args.use_prebuilt_runtime:
+        verify_real_mod(final)
     if not args.offline:
         verify(final,'frozen-openrouter-live-check',live=True,edition=args.edition)
     package(final, side_by_side=args.side_by_side, edition=args.edition)

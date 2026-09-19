@@ -6,6 +6,7 @@ service.json
 bundled_service.json
 openrouter-access.json
 translation-balances.json
+mod-titles.json
 build/
 dist/
 release/
@@ -15,3 +16,8 @@ runtime/
 setup-last.json
 setup-*.lock
 Guigu-Logs.txt
+github-access.json
+shared-library-cache/
+updates/
+update-last.json
+preferences.json

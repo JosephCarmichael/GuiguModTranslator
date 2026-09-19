@@ -13,6 +13,7 @@ from extractor import APP, GAME, discover, extract, atomic_json, read_json, save
 from translation import DEEPSEEK_LABEL
 from app_config import CONCURRENCY_CHOICES, translation_concurrency, save_preferences
 from app_config import BATCH_SIZE_CHOICES, translation_batch_size
+from mod_titles import display_name, load_titles
 
 
 def gui():
@@ -26,6 +27,7 @@ def gui():
             self.geometry('1380x870')
             self.minsize(980, 650)
             self.mods, self.project, self.folder, self.current = {}, None, None, None
+            self.titles = load_titles()
             self.queue = queue.Queue()
             self.stop = threading.Event()
             self.busy = False
@@ -134,7 +136,7 @@ def gui():
                 self.mods = {m['id']: m for m in discover(Path(self.game.get()))}
                 self.mod_tree.delete(*self.mod_tree.get_children())
                 for m in self.mods.values():
-                    self.mod_tree.insert('', 'end', iid=m['id'], text=m['name'], values=(m['origin'],))
+                    self.mod_tree.insert('', 'end', iid=m['id'], text=display_name(m, self.titles), values=(m['origin'],))
                 self.status.set(f'{len(self.mods)} mods found. Select a mod to load its project or extract Chinese text.')
             except Exception as exc: messagebox.showerror('Mod discovery failed', str(exc))
 
@@ -328,6 +330,7 @@ def main():
     trans.add_argument('--target', default='en')
     trans.add_argument('--glossary', type=Path)
     trans.add_argument('--include-review', action='store_true')
+    trans.add_argument('--retranslate', action='store_true', help='Back up and translate existing text again using the selected settings')
     trans.add_argument('--batch-size', type=int, choices=BATCH_SIZE_CHOICES, default=None,
                        help='Entries per request (saved preference, otherwise 48)')
     trans.add_argument('--concurrency', type=int, choices=CONCURRENCY_CHOICES, default=None,
@@ -376,7 +379,8 @@ def main():
         if args.command == 'translate':
             from translation import translate
             result = translate(project, folder, target=args.target, progress=print,
-                               glossary=args.glossary, include_review=args.include_review, concurrency=args.concurrency, batch_size=args.batch_size)
+                               glossary=args.glossary, include_review=args.include_review, concurrency=args.concurrency,
+                               batch_size=args.batch_size, retranslate=args.retranslate)
         else:
             result = import_csv(project, args.csv)
             save_project(project, folder)

@@ -169,6 +169,7 @@ def setup_lock(game):
 
 
 def destination(game, name):
+    game = Path(game).resolve()
     path = game / safe_name(name)
     if not path.resolve().is_relative_to(game):
         raise ValueError('A setup folder points outside the game. Existing files were kept.')

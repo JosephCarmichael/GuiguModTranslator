@@ -1,0 +1,25 @@
+{
+  "result": "passed",
+  "windows_ansi_code_page": 1252,
+  "proxy_sha256": "4ecc46869239ad191010c5206436067464cf28736742d9ebd206269279b63c81",
+  "before": {
+    "path": "C:\\Users\\chcar\\AppData\\Local\\Temp\\GuiguLaunchRepair-_dcv95lq\\steamapps\\common\\鬼谷八荒",
+    "exit_code": 0,
+    "stdout": ""
+  },
+  "after": {
+    "path": "C:\\Users\\chcar\\AppData\\Local\\Temp\\GuiguLaunchRepair-_dcv95lq\\steamapps\\common\\DF1D~1",
+    "exit_code": 42,
+    "stdout": "MAIN reached; ACP=1252\nVERSION proxy forwarded successfully"
+  },
+  "checks": [
+    "exact bundled proxy",
+    "original failure reproduced",
+    "Windows short path without moving files",
+    "original directory preserved",
+    "manifest-derived launch reaches main after repair",
+    "unchanged executable and proxy",
+    "old-path references preserved"
+  ],
+  "limits": "A native harness was launched with --no-mods; the real game and Steam state were not changed."
+}
