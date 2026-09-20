@@ -1,4 +1,0 @@
-destiny-friends-onedir-check: passed
-destiny-friends-onefile-check: passed
-frozen-real-mod-check: passed
-ZIP ready: C:\Program Files (x86)\Steam\steamapps\common\鬼谷八荒\GuiguModTranslator\release\GuiguModTranslator-Friends.zip

@@ -1,4 +1,0 @@
-launch-fix-onedir-check: passed
-launch-fix-onefile-check: passed
-frozen-real-mod-check: passed
-ZIP ready: C:\Program Files (x86)\Steam\steamapps\common\鬼谷八荒\GuiguModTranslator\release\GuiguModTranslator-Friends-Updated-20260913-210638.zip

@@ -21,3 +21,23 @@ shared-library-cache/
 updates/
 update-last.json
 preferences.json
+
+# Generated diagnostics and local development notes
+/evidence/*
+!/evidence/.gitkeep
+/*_VALIDATION.md
+/AUDIT.md
+/NEED*.md
+/PORTABLE_RELEASE.md
+/RELEASES_AND_SHARING.md
+
+# Portable package copies placed beside the source
+/Launch.bat
+/START HERE.txt
+/THIRD PARTY LICENSES.txt
+/*.zip
+
+# Local environment configuration
+/.env
+/.env.*
+!/.env.example
