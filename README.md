@@ -6,8 +6,8 @@ and reuse saved community translations.
 [Download for Windows](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest) ·
 [User guide](docs/USER_GUIDE.md) · [Development](docs/DEVELOPMENT.md)
 
-**No API keys are included in the download.** The repository is currently private;
-downloads still require repository access.
+**No API keys are included in the download.** Downloads, updates, and shared
+translations are public; no GitHub account is required.
 
 ## Get started
 

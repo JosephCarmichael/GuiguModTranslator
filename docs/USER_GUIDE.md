@@ -6,7 +6,7 @@
 
 Download the Public ZIP from [Releases](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest),
 extract it outside the game folder, and open `GuiguModTranslator.exe`.
-The current repository is private; your GitHub account needs access.
+Downloads are public and do not require a GitHub account.
 
 The app locates Steam and installs missing MelonLoader components and the
 translation plugin. First launch can take several minutes. Follow the setup bar
@@ -98,10 +98,9 @@ downloading, verifies ZIP and executable checksums, then restarts the app.
 Finish or cancel translation before updating. The previous executable is retained
 as `GuiguModTranslator.previous.exe`.
 
-Private releases and new library downloads require an invited GitHub account
-and a token entered in **Options → GitHub access**. Give it only the access needed
-to read this repository. This is separate from the translation API key.
-Public repositories can be read without a GitHub token.
+App updates and shared-library downloads are public and need no GitHub token.
+**Options → GitHub access** is optional. GitHub access is separate from the
+OpenRouter API key used for OpenRouter translation.
 
 Older 1.3.x apps need a manual download to gain the updater. Friends and Personal
 v1.4.0 apps can update to the Public package. Existing provider preferences and

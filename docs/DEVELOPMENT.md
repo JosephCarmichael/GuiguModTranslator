@@ -52,11 +52,10 @@ with repository access and run `publish_release.py --publish`.
 
 ## Public repository visibility
 
-The package is designed for public distribution; the GitHub repository remains
-private until its visibility is changed. Review retained Git history before
-changing visibility: removing reports from the current tree does not erase their
-older committed copies. Verify anonymous downloads and shared-library access
-after changing visibility.
+The repository, release downloads, and shared library are public. Users do not
+need a GitHub account. Verify anonymous release and library access when changing
+the download or update infrastructure. Keep credentials and generated local
+reports out of source control and release packages.
 
 The stable download page is
 [Releases](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest).
