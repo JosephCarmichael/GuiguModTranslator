@@ -21,25 +21,12 @@ jobs:
           python-version: '3.13'
       - name: Install build dependencies
         run: python -m pip install -r requirements.txt pyinstaller
-      - name: Configure translation access
-        env:
-          TRANSLATION_SERVICE_JSON: ${{ secrets.TRANSLATION_SERVICE_JSON }}
-        run: |
-          @'
-          import json, os
-          from pathlib import Path
-          value = json.loads(os.environ['TRANSLATION_SERVICE_JSON'])
-          assert value.get('api_key'), 'Configure the TRANSLATION_SERVICE_JSON repository secret'
-          Path('bundled_service.json').write_text(json.dumps(value), encoding='utf-8')
-          '@ | python -
       - name: Unit tests
         run: |
           python -c "from runtime_bundle import restore_runtime; restore_runtime()"
           python -X utf8 -m unittest discover -s tests -v
-      - name: Build and verify Friends
-        run: python -X utf8 build_release.py --offline --use-prebuilt-runtime --edition friends
-      - name: Build and verify Personal
-        run: python -X utf8 build_release.py --offline --use-prebuilt-runtime --edition personal
+      - name: Build and verify public package
+        run: python -X utf8 build_release.py --offline --use-prebuilt-runtime --edition public
       - name: Publish versioned update
         env:
           GH_TOKEN: ${{ github.token }}

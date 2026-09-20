@@ -3,7 +3,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from app_config import APP_VERSION, CONCURRENCY_CHOICES, BATCH_SIZE_CHOICES
+from app_config import APP_VERSION, CONCURRENCY_CHOICES, BATCH_SIZE_CHOICES, build_edition
 from translation_cost import PRICING_NOTE
 
 
@@ -32,6 +32,7 @@ def build_view(app):
     for label, command in [('Choose game folder…', app.choose_game), ('Refresh mods', app.refresh),
                            ('Check game setup', app.start_setup), ('Collect logs', app.collect_logs),
                            ('API key…', app.api_key_settings), ('GitHub access…', app.github_settings),
+                           ('Translation models…', app.translation_settings),
                            ('Check for updates', lambda: app.check_updates(manual=True)),
                            ('Refresh shared translations', app.refresh_shared),
                            ('Find untranslated destinies', app.find_destinies)]:
@@ -53,7 +54,7 @@ def build_view(app):
     heading = ttk.Frame(header)
     heading.pack(side='left', fill='x', expand=True)
     ttk.Label(heading, text='Your mod library', style='Title.TLabel').pack(anchor='w')
-    ttk.Label(heading, text=('Friends' if app.friends else 'Personal') + ' · ' + APP_VERSION + ' · English translations for Tale of Immortal', style='Sub.TLabel').pack(anchor='w', pady=(4, 0))
+    ttk.Label(heading, text=build_edition().title() + ' · ' + APP_VERSION + ' · English translations for Tale of Immortal', style='Sub.TLabel').pack(anchor='w', pady=(4, 0))
     balance = ttk.Frame(header)
     balance.pack(side='right')
     ttk.Label(balance, textvariable=app.balance_label, font=('Segoe UI', 13, 'bold')).pack(anchor='e')
@@ -106,6 +107,10 @@ def build_view(app):
                            (app.detail_meta, ('Segoe UI', 10)), (app.detail_saved, ('Segoe UI', 10))]:
         ttk.Label(detail, textvariable=variable, wraplength=220, style='Card.TLabel', font=font).pack(anchor='w', pady=3)
     ttk.Label(controls, textvariable=app.title_status, style='Sub.TLabel', wraplength=980).pack(anchor='w', pady=(5, 0))
+    models = ttk.Frame(controls)
+    models.pack(fill='x', pady=(5, 0))
+    ttk.Button(models, text='Translation models…', command=app.translation_settings).pack(side='left')
+    ttk.Label(models, textvariable=app.access_note, style='Sub.TLabel', wraplength=760).pack(side='left', padx=10)
     app.choose = ttk.Button(controls, text='Choose game folder…', command=app.choose_game)
     settings = ttk.Frame(controls)
     settings.pack(fill='x', pady=(10, 0))

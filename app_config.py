@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 RESOURCE_DIR = Path(__file__).resolve().parent
-APP_VERSION = '1.4.0'
+APP_VERSION = '1.5.0'
 APP_DIR = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else RESOURCE_DIR
 CONCURRENCY_CHOICES = (1, 4, 8, 16, 32, 64, 128)
 DEFAULT_CONCURRENCY = 16
@@ -15,15 +15,20 @@ BATCH_SIZE_CHOICES = (12, 24, 48, 96)
 DEFAULT_BATCH_SIZE = 48
 
 
-def is_friends_build():
+def build_edition():
     if not getattr(sys, 'frozen', False):
-        return False
+        return 'personal'
     try:
         policy = json.loads((RESOURCE_DIR / 'build_policy.json').read_text(encoding='utf-8'))
-        return policy.get('edition') != 'personal'
+        edition = policy.get('edition')
+        return edition if edition in ('friends', 'personal', 'public') else 'friends'
     except (OSError, ValueError, AttributeError):
         # A frozen build with missing/invalid policy never gains personal access.
-        return True
+        return 'friends'
+
+
+def is_friends_build():
+    return build_edition() == 'friends'
 
 
 def preferences():
@@ -42,6 +47,16 @@ def translation_concurrency():
 def translation_batch_size():
     value = preferences().get('batch_size', DEFAULT_BATCH_SIZE)
     return value if type(value) is int and value in BATCH_SIZE_CHOICES else DEFAULT_BATCH_SIZE
+
+
+def translation_mode():
+    value = preferences().get('translation_mode', 'google' if build_edition() == 'public' else 'paid')
+    return value if value in ('paid', 'free', 'google') else 'paid'
+
+
+def minimum_intelligence():
+    value = preferences().get('minimum_intelligence', 30)
+    return value if type(value) in (int, float) and 0 <= value <= 100 else 30
 
 
 def bulk_price_pence():
@@ -66,7 +81,10 @@ def data_dir():
     result.mkdir(parents=True, exist_ok=True)
     return result
 
-def service_profile():
+def service_profile(mode=None, minimum=None):
+    mode = mode or translation_mode()
+    if mode == 'google':
+        return {'provider': 'Google Translate', 'model': 'google-web', 'keyless': True}
     from api_access import selected_key, is_personal_key
     selected = selected_key()
     local = data_dir() / 'service.json'
@@ -74,17 +92,23 @@ def service_profile():
     path = local if local.is_file() else bundled
     if selected is None:
         if not path.is_file():
-            raise ValueError('Translation access is not configured. Please obtain a configured copy of the app.')
+            raise ValueError('Choose Google Translate in Translation models, or add your own OpenRouter key in API key settings.')
         profile = json.loads(path.read_text(encoding='utf-8'))
         key = str(profile.get('api_key', '')).strip()
     else:
         key = selected
     if not key:
-        raise ValueError('The translation key is missing. Please obtain an updated copy of the app.')
+        raise ValueError('No translation key is configured. Choose Google Translate or add your own OpenRouter key.')
     if key.startswith('sk-or-'):
-        return {'api_key': key, 'endpoint': 'https://openrouter.ai/api/v1/chat/completions',
+        profile = {'api_key': key, 'endpoint': 'https://openrouter.ai/api/v1/chat/completions',
                 'model': 'deepseek/deepseek-v4.1-flash', 'provider': 'OpenRouter',
                 'personal_key': is_personal_key(key)}
+        if (mode or translation_mode()) == 'free':
+            profile.update(model='free-pool', free_only=True,
+                           minimum_intelligence=minimum_intelligence() if minimum is None else minimum)
+        return profile
+    if (mode or translation_mode()) == 'free':
+        raise ValueError('Free translation needs an OpenRouter key. Choose one in Options > API key.')
     return {'api_key': key, 'endpoint': 'https://api.deepseek.com/v1/chat/completions',
             'model': 'deepseek-flash', 'provider': 'DeepSeek'}
 

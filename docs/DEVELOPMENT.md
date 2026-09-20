@@ -13,57 +13,53 @@ py -3.13 -m venv .venv
 .venv\Scripts\python.exe -X utf8 -m unittest discover -s tests -v
 ```
 
+Source launches preserve local provider settings. Choose Google in **Translation
+models** for keyless translation. Local credentials and generated evidence are
+ignored by Git. Keep reproducible tests in `tests/`.
+
 Runtime-loader development also needs the .NET SDK, the .NET Framework 4.7.2
-targeting pack, and a compatible local game installation. Build and test with
-`loader/Build.ps1 -Test`, then run `runtime_bundle.py` to update the prebuilt
-loader and its source/binary hashes. Game assemblies are not redistributed.
+targeting pack, and a compatible local game. Run `loader/Build.ps1 -Test`, then
+`runtime_bundle.py` to update the prebuilt loader and its source/binary hashes.
+Game assemblies are not redistributed.
 
-Generated evidence and local validation reports are ignored. Keep reproducible
-tests in `tests/`; diagnostic scripts can write into `evidence/`.
-
-## Build a private release
-
-Install PyInstaller and provide an authorized shared profile in the ignored
-`bundled_service.json`. The existing build embeds that key in the executable.
+## Build a credential-free release
 
 ```bat
 .venv\Scripts\python.exe -m pip install pyinstaller
-.venv\Scripts\python.exe -X utf8 build_release.py --offline --use-prebuilt-runtime --edition friends
-.venv\Scripts\python.exe -X utf8 build_release.py --offline --use-prebuilt-runtime --edition personal
+.venv\Scripts\python.exe -X utf8 build_release.py --offline --use-prebuilt-runtime --edition public
 ```
 
-Use `--side-by-side` to keep existing app files. Offline builds skip live
-translation checks; they still test the packaged app. Preserve dependency notices
-and source archives in distribution packages.
+No translation secret or service profile is required or included. Packaging scans
+the executable and embedded Python modules for credential files and key patterns.
+The publisher repeats this check before uploading. Portable self-tests verify a
+clean start without keys, encrypted user-key storage/removal, translation,
+installation, and update behavior using isolated fixtures.
 
-Increment `APP_VERSION` before publishing a new release. GitHub Actions tests and
-builds both editions, then publishes their ZIPs and `update-manifest.json`.
-It uses the `TRANSLATION_SERVICE_JSON` repository secret. A code push becomes an
-offered update only after successful packaging and publication. Existing release
-versions are not overwritten.
+The output is `release/GuiguModTranslator-Public.zip`. Use `--side-by-side`
+to build a separate timestamped copy. Preserve dependency notices and source
+archives when distributing. `--offline` skips live Google checks. Run the copied
+EXE with `--self-test-live PATH_TO_REPORT.json` for a small live Google test.
 
-For local publishing, authenticate GitHub CLI with repository access and run
-`publish_release.py --publish` after building both editions.
+Increment `APP_VERSION`, test, commit, and push to `main`. GitHub Actions builds,
+verifies, and publishes the Public ZIP and `update-manifest.json`, using only
+the workflow's GitHub publishing token. That token is never passed to packaging.
+No translation credentials are stored in Actions secrets.
 
-## Prepare public distribution
+The manifest maps Public, Friends, and Personal clients to the same key-free
+package, preserving updates for older installations. Existing release versions
+are not overwritten. To publish locally after building, authenticate GitHub CLI
+with repository access and run `publish_release.py --publish`.
 
-The existing v1.4.0 Friends and Personal executables contain the configured
-shared translation key. A public build needs to omit that credential and let
-users configure their own translation access, or use a separately designed
-hosted service.
+## Public repository visibility
 
-Before changing repository visibility:
-
-- Build and test the intended public package, including free translation if it
-  is advertised. The v1.4.0 EXE does not contain the newer free mode.
-- Resolve embedded credentials in existing downloadable releases.
-- Review retained Git history: removing local reports from the current tree
-  does not remove older committed reports or screenshots.
-- Verify downloads, update checks, and library reads without a GitHub login.
+The package is designed for public distribution; the GitHub repository remains
+private until its visibility is changed. Review retained Git history before
+changing visibility: removing reports from the current tree does not erase their
+older committed copies. Verify anonymous downloads and shared-library access
+after changing visibility.
 
 The stable download page is
 [Releases](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest).
-It remains restricted while the repository is private.
 
 ## Publish shared translations
 
@@ -71,14 +67,13 @@ It remains restricted while the repository is private.
 .venv\Scripts\python.exe -X utf8 shared_library.py
 ```
 
-Review and commit the resulting `shared-library/` files. The index maps stable
-mod identities to titles and compressed source/translation pairs. Exports omit
-local paths, credentials, saves, and provenance metadata. Only valid entries are
-included; partial projects can contribute usable translations.
+Review and commit the resulting `shared-library/` files. Exports contain stable
+mod identities, titles, and valid source/translation pairs. They omit local paths,
+credentials, saves, and provenance metadata. Partial projects can contribute
+usable entries.
 
-Clients download the index and needed mod files, verify hashes, and reuse exact
-matches while preserving local edits. This does not upload client projects.
-Keep files split by mod and monitor repository size as Git history grows.
+Clients verify hashes and reuse exact matches while preserving local edits.
+They do not upload projects. Keep files split by mod and monitor repository size.
 
 ## Useful CLI commands
 
@@ -91,4 +86,5 @@ Keep files split by mod and monitor repository size as Git history grows.
 ```
 
 The CLI `translate` command saves a project; run `install` afterward.
-`--retranslate` requests fresh translations with a backup of the previous project.
+`--retranslate` backs up the project before requesting fresh translations.
+Google serializes requests regardless of the AI concurrency setting.

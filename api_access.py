@@ -45,7 +45,7 @@ def bundled_key():
 
 def is_personal_key(key):
     shared = bundled_key()
-    return bool(key.startswith('sk-or-') and shared and not hmac.compare_digest(key.encode(), shared.encode()))
+    return bool(key.startswith('sk-or-') and (not shared or not hmac.compare_digest(key.encode(), shared.encode())))
 
 
 def save_openrouter_key(key):
@@ -66,6 +66,12 @@ def use_shared_key():
     atomic_bytes(data_dir() / ACCESS_FILE, b'{"mode":"shared"}')
 
 
+def remove_openrouter_key():
+    # A marker prevents an old service.json from silently reactivating a key.
+    from installer import atomic_bytes
+    atomic_bytes(data_dir() / ACCESS_FILE, b'{"mode":"none"}')
+
+
 def selected_key():
     """None means legacy configuration; corrupt personal settings never fall back."""
     path = data_dir() / ACCESS_FILE
@@ -73,6 +79,8 @@ def selected_key():
         return None
     try:
         value = json.loads(path.read_text(encoding='utf-8'))
+        if value['mode'] == 'none':
+            return ''
         if value['mode'] == 'shared':
             return bundled_key()
         if value['mode'] != 'personal':

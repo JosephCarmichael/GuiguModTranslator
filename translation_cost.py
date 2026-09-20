@@ -4,7 +4,7 @@ import tempfile
 from decimal import Decimal, ROUND_CEILING
 from pathlib import Path
 
-from app_config import is_friends_build, translation_batch_size
+from app_config import is_friends_build, translation_batch_size, translation_mode
 from extractor import CJK, Scanner
 
 # Verified against OpenRouter's model feed on 2026-09-13. Use peak, uncached
@@ -19,7 +19,9 @@ PRICING_NOTE = ('DeepSeek V4.1 Flash peak rates: $0.30 input / $1.20 output per 
                 '(verified 13 September 2026). GBP conversion: ECB, 11 September 2026. '
                 'Includes request overhead and a 30% allowance. Estimates cover all extracted '
                 'nontechnical text, including saved translations, and are not a billing guarantee. '
-                'Retries, output length, prices and exchange rates can change actual cost.')
+                'Retries, output length, prices and exchange rates can change actual cost. '
+                'Free mode uses only verified zero-price models, with no paid fallback. '
+                'Free requests have account-wide quotas; rotating models does not increase them.')
 
 
 def is_destiny_project(project):
@@ -31,7 +33,7 @@ def is_destiny_project(project):
     return all(u['source'] in sources and u['category'] == 'player_text' for u in project['units'])
 
 
-def estimate_project(project, batch_size=None):
+def estimate_project(project, batch_size=None, *, mode=None):
     from translation import protect
     batch_size = translation_batch_size() if batch_size is None else batch_size
     from app_config import BATCH_SIZE_CHOICES
@@ -55,15 +57,20 @@ def estimate_project(project, batch_size=None):
     input_tokens += batches * 250  # System instructions and message framing.
     usd = (input_tokens * INPUT_USD_PER_M + output_tokens * OUTPUT_USD_PER_M) / Decimal(1000000)
     pence = usd * USD_TO_GBP * 100 * ESTIMATE_MARGIN
+    free = (mode or translation_mode()) in ('free', 'google')
+    if free:
+        pence = Decimal(0)
     counts = project.get('coverage', {}).get('counts', {})
     incomplete = any(counts.get(s, 0) for s in ('unreadable', 'partial')) or any(
         f.get('status') in ('unreadable', 'partial') for f in project.get('coverage', {}).get('files', []))
     return {'pence': str(pence), 'entries': len(sources), 'batches': batches,
             'input_tokens': input_tokens, 'output_tokens': output_tokens,
-            'complete': not incomplete, 'batch_size': batch_size}
+            'complete': not incomplete, 'batch_size': batch_size, 'free': free}
 
 
 def format_pence(estimate):
+    if estimate.get('free'):
+        return 'Free (0p)'
     amount = Decimal(estimate['pence']).quantize(Decimal('0.001'), rounding=ROUND_CEILING)
     return ('~' if estimate.get('complete', True) else '≥') + f'{amount:f}p'
 
@@ -78,9 +85,11 @@ def enforce_translation_policy(project, batch_size=None, profile=None):
     if profile is None:
         from app_config import service_profile
         profile = service_profile()
-    if profile.get('personal_key'):
+    if profile.get('personal_key') or profile.get('free_only') or profile.get('keyless'):
         return
-    estimate = estimate_project(project, batch_size)
+    # The credential/mode snapshot authorizes this request, even if another
+    # app window changes the saved preference while a job is running.
+    estimate = estimate_project(project, batch_size, mode='paid')
     if not full_translation_allowed(estimate):
         reason = ('Some source files could not be fully read.' if not estimate['complete'] else
                   'The full-mod estimate is ' + format_pence(estimate) + '.')

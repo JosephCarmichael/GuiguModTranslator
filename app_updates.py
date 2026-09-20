@@ -11,7 +11,7 @@ import uuid
 import zipfile
 from pathlib import Path, PurePosixPath
 
-from app_config import APP_VERSION, data_dir, is_friends_build
+from app_config import APP_VERSION, data_dir, build_edition
 from github_client import API_ROOT, read_bytes, read_json, open_request
 
 MAX_DOWNLOAD = 300 * 1024 * 1024
@@ -27,7 +27,7 @@ def version_tuple(version):
 
 
 def edition():
-    return 'friends' if is_friends_build() else 'personal'
+    return build_edition()
 
 
 def asset_url(asset):

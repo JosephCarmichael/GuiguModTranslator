@@ -9,7 +9,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 from app_config import APP_DIR, APP_VERSION, installed_game, CONCURRENCY_CHOICES, translation_concurrency, save_preferences
-from app_config import BATCH_SIZE_CHOICES, translation_batch_size, is_friends_build
+from app_config import BATCH_SIZE_CHOICES, translation_batch_size, is_friends_build, build_edition
 from mod_titles import apply_titles, display_name, load_titles, needs_title, translate_titles
 from saved_translations import job_status, scan_statuses, tick
 from extractor import APP, atomic_json, discover
@@ -45,7 +45,7 @@ class App(tk.Tk):
         self.estimates = {}
         self.estimate_stop = threading.Event()
         self.friends = is_friends_build()
-        self.title('Guigu Mod Translator ' + APP_VERSION + ' — ' + ('Friends' if self.friends else 'Personal'))
+        self.title('Guigu Mod Translator ' + APP_VERSION + ' — ' + build_edition().title())
         self.busy = False
         self.bulk_running = False
         self.bulk_price = tk.IntVar(value=bulk_price_pence())
@@ -88,6 +88,16 @@ class App(tk.Tk):
             self.check_updates(manual=True)
             self.refresh_shared()
         return GitHubDialog(self, changed)
+
+    def translation_settings(self):
+        if self.busy or self.title_running:
+            self.status.set('Wait for translation to finish or cancel it before changing models.')
+            return
+        from translation_settings import TranslationSettings
+        def changed():
+            self.refresh_access()
+            self.refresh_estimates()
+        return TranslationSettings(self, changed)
 
     def check_updates(self, manual=False):
         if self.update_running or os.environ.get('GUIGU_TRANSLATOR_OFFLINE') == '1':
@@ -212,7 +222,7 @@ class App(tk.Tk):
             return
         if messagebox.askyesno('Translate mod again',
                 'Translate every entry again using your selected API key, parallel requests and batch size?\n\n'
-                'This makes new paid requests. A backup of your previous translations will be saved.', parent=self):
+                'This makes new requests using your selected translation mode. A backup of your previous translations will be saved.', parent=self):
             self.translate(retranslate=True)
 
     def retranslate_title(self):
@@ -230,7 +240,11 @@ class App(tk.Tk):
             self.personal_key, access_error = False, True
             self.balance_profile = {}
         if access_error:
-            note = 'API key needs attention. Open API key to choose translation access.'
+            note = 'Choose Google Translate in Translation models, or add your own OpenRouter API key.'
+        elif self.balance_profile.get('keyless'):
+            note = 'Google Translate · no API key · experimental web service · throttling may occur.'
+        elif self.balance_profile.get('free_only'):
+            note = f'Free OpenRouter models · intelligence ≥ {self.balance_profile["minimum_intelligence"]:g} · daily quotas apply · no paid fallback.'
         elif self.personal_key:
             note = 'Personal OpenRouter key · uses your credit · no app cost cap.'
         elif self.friends:
@@ -244,6 +258,14 @@ class App(tk.Tk):
 
     def update_balance_display(self):
         from translation_balance import tracker, balance_text
+        if self.balance_profile.get('keyless'):
+            self.balance_label.set('Google Translate · 0p')
+            self.balance_detail.set('No API key · experimental')
+            return
+        if self.balance_profile.get('free_only'):
+            self.balance_label.set('Free translation · 0p')
+            self.balance_detail.set('OpenRouter request quotas apply')
+            return
         text, detail = balance_text(tracker().snapshot(self.balance_profile))
         self.balance_label.set(text)
         self.balance_detail.set(detail)
@@ -498,7 +520,7 @@ class App(tk.Tk):
         text = 'Calculating…' if estimate is None else ('Unavailable' if estimate.get('error') else format_pence(estimate))
         if ident == PROJECT_ID:
             access = 'Always available'
-        elif not self.friends or self.personal_key:
+        elif not self.friends or self.personal_key or self.balance_profile.get('free_only'):
             access = 'Available'
         elif estimate is None:
             access = 'Checking cost…'
@@ -514,7 +536,7 @@ class App(tk.Tk):
         from destinies import PROJECT_ID
         from shared_library import library_key, load_index
         shared = library_key(self.mods.get(ident, {})) in load_index().get('mods', {})
-        return ident == PROJECT_ID or not self.friends or self.personal_key or shared or full_translation_allowed(self.estimates.get(ident))
+        return ident == PROJECT_ID or not self.friends or self.personal_key or self.balance_profile.get('free_only') or shared or full_translation_allowed(self.estimates.get(ident))
 
     def render(self):
         selected = self.list.selection()

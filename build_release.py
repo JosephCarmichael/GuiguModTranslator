@@ -1,4 +1,4 @@
-"""Build Windows-only self-contained executables and a minimal friends ZIP."""
+"""Build Windows-only self-contained executables and a credential-free public ZIP."""
 import hashlib
 import argparse
 import json
@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 
-def build(onefile, output_dir=None, edition="friends"):
+def build(onefile, output_dir=None, edition="public"):
     name = 'GuiguModTranslator' if onefile else 'GuiguModTranslatorPreview'
     mode = 'onefile' if onefile else 'onedir'
     output_dir = Path(output_dir) if output_dir else ROOT/'dist'
@@ -34,7 +34,6 @@ def build(onefile, output_dir=None, edition="friends"):
     shutil.copytree(ROOT/'bootstrap', bootstrap, dirs_exist_ok=True)
     args = [sys.executable, '-X', 'utf8', '-m', 'PyInstaller', '--noconfirm', '--clean', '--'+mode,
             '--windowed', '--name', name, '--collect-all', 'UnityPy',
-            '--add-data', str(ROOT/'bundled_service.json')+';.',
             '--add-data', str(policy)+';.',
             '--add-data', str(runtime/'GuiguModTranslation.dll')+';runtime',
             '--add-data', str(runtime/'manifest.json')+';runtime',
@@ -46,7 +45,7 @@ def build(onefile, output_dir=None, edition="friends"):
         subprocess.run(args,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,check=True)
     return output_dir/(name+'.exe') if onefile else output_dir/name/(name+'.exe')
 
-def verify(exe, name, live=False, edition="friends"):
+def verify(exe, name, live=False, edition="public"):
     # No Python environment, installation directories or saved local key are
     # required. All third-party modules must load from the executable bundle.
     with tempfile.TemporaryDirectory(prefix='Guigu Portable Test ') as folder:
@@ -72,12 +71,11 @@ def verify(exe, name, live=False, edition="friends"):
         assert result['edition'] == edition
         print(name+': passed',flush=True)
 
-def package(exe, side_by_side=False, edition="friends"):
+def package(exe, side_by_side=False, edition="public"):
     from PyInstaller.archive.readers import CArchiveReader
     contents=CArchiveReader(str(exe))
-    embedded=json.loads(contents.extract('bundled_service.json').decode('utf-8'))
-    expected=json.loads((ROOT/'bundled_service.json').read_text(encoding='utf-8'))
-    assert embedded==expected
+    from release_security import verify_archive
+    verify_archive(contents)
     assert json.loads(contents.extract('build_policy.json')) == {'edition': edition}
     assert not any(name.replace('\\','/').endswith('/service.json') or name=='service.json'
                    or name.replace('\\','/').endswith(('openrouter-access.json', 'github-access.json', 'translation-balances.json'))
@@ -98,86 +96,25 @@ def package(exe, side_by_side=False, edition="friends"):
     (destination/'Launch.bat').write_text('@echo off\r\nstart "" "%~dp0GuiguModTranslator.exe"\r\n',encoding='ascii')
     (destination/'START HERE.txt').write_text(
         'GUIGU MOD TRANSLATOR\n\n'
-        '1. Extract this ZIP to a folder.\n'
-        '2. Double-click GuiguModTranslator.exe (or Launch.bat).\n'
-        '3. Watch the setup bar. The app finds your installed Steam game, sets up\n'
-        '   MelonLoader and the translator, and starts the game when needed.\n'
-        '   The first launch can take several minutes.\n'
-        '4. Choose Translate destiny menu, or select a mod and click Translate\n'
-        '   and install. Close the game and use Launch game to apply changes.\n\n'
-        'No loader installation, file copying, Python setup or API-key entry.\n'
-        'Updates appear in the app when a new GitHub release is ready. Click\n'
-        'Install update to download, verify and restart; your saved work stays.\n'
-        'For private releases, use Options > GitHub access once with your own\n'
-        'read-only token after the repository owner invites your account.\n'
-        'GitHub access is separate from your translation API key.\n\n'
-        'Mod preview images come from your installed mods. Select a mod to\n'
-        'see its saved progress. Translate mod again makes new paid requests\n'
-        'using your settings and saves a backup of the previous translation.\n'
-        'Matching shared translations and titles are reused automatically.\n\n'
-        'If Windows asks for permission, click Yes. Missing Microsoft runtimes\n'
-        'are installed automatically; Windows may require a PC restart.\n'
-        'If the game is already open and files need updating, save and close it.\n'
-        'Setup continues automatically. Retry setup resumes interrupted work.\n\n'
-        'LAUNCH FIX (1.3.2): If setup asks, choose Steam > Exit, not just X.\n'
-        'The app repairs the Chinese game-folder name, then restarts Steam.\n'
-        'Keep this translator in Downloads or another folder outside the game.\n'
-        'Game files, saves, mods and existing translations are preserved.\n\n'
-        'PERSONAL API KEY (1.3.3): Click API key or Options > API key.\n'
-        'Paste your own OpenRouter key and click Save personal key.\n'
-        'Translations then use your OpenRouter credit, with no app cost cap.\n'
-        'Use shared key removes the saved personal key and restores the shared cap.\n'
-        'Your key is encrypted for your Windows account and stays on your PC.\n\n'
-        'Need help? Click What does this mean? beside API key for signup, credit,\n'
-        'saved-translation and insufficient-funds instructions.\n\n'
-        'TRANSLATE ALL (1.3.5): Set the slider from 5p to GBP 2 per mod, then\n'
-        'click Translate all. Matching mods run cheapest first. The displayed\n'
-        'combined estimate can exceed the slider value: the filter is per mod.\n'
-        'The shared-key cap still applies; your personal key lifts that cap.\n'
-        'Cancel all keeps saved progress. Repeating reuses existing translations.\n'
-        'App updates keep saved translations in the same Windows user-data folder.\n\n'
-        'MOD TITLES (1.3.8): Chinese mod names are translated to English and saved\n'
-        'on this PC, so later launches cost nothing. A tick beside a mod means it\n'
-        'already has a complete saved translation.\n\n'
-        'BALANCE (1.3.6): The top-left balance shows your OpenRouter key allowance\n'
-        'as a GBP estimate, with the original dollar amount underneath. It drops\n'
-        'as billed responses arrive and refreshes from OpenRouter. Saved text\n'
-        'costs nothing to reuse. Some unlimited keys do not expose a balance.\n\n'
-        'If something goes wrong, click Collect logs in the app. It copies the\n'
-        'report to your clipboard and saves Guigu-Logs.txt beside the EXE.\n'
-        'Paste the report to send it, or send that text file. No log ZIP needed.\n\n'
-        'Parallel requests controls simultaneous batches: 16 (default), 32, 64,\n'
-        'or 128; smaller options are also available. The app remembers your choice.\n'
-        'Speed depends on service capacity; rate limits are retried automatically.\n\n'
-        'Entries per request selects 12, 24, 48 (default), or 96 text entries.\n'
-        'The app retains a 6,000-character target and splits truncated batches.\n'
-        'Existing translations are reused when changing provider or batch size.\n\n'
-        'Text conflicts resolve automatically: the latest installed translation wins.\n'
-        'Removing it restores the other installed mod’s wording. Manual edits win\n'
-        'over machine translations when duplicate text occurs within a project.\n\n'
-        'If the provider is busy, the app reduces actual concurrency and shows a\n'
-        'retry countdown. The selected number remains the maximum. Errors and\n'
-        'retries are recorded in request-errors.jsonl inside the saved project.\n\n'
-        'Python, MelonLoader 0.5.4 and its first-launch tools are included.\n'
-        'Requires 64-bit Windows 10/11, an internet connection and downloaded\n'
-        'Tale of Immortal mods. Translation access is already configured.\n\n'
-        'You need to own Tale of Immortal; the game itself is not in this ZIP.\n'
-        'The app finds Steam automatically. If it cannot find the game, use\n'
-        'Options > Choose game folder and select the folder with guigubahuang.exe.\n\n'
-        'The app installs its text loader and translated dictionaries into the game.\n'
-        'Options > Install saved translations applies work you already translated.\n'
-        'Options > Remove selected mod’s translations reverses the installation.\n'
-        'An existing compatible MelonLoader installation and other mods are kept.\n'
-        'The detailed editor is under Options. Progress is saved automatically.\n'
-        'If the shared allowance runs out, saved work remains available.\n\n'
-        'Saved files: %LOCALAPPDATA%\\GuiguModTranslator\\projects\n',encoding='utf-8')
-    with (destination/'START HERE.txt').open('a', encoding='utf-8') as instructions:
-        instructions.write('\nEDITION: '+edition.upper()+'\n')
-        instructions.write('Full-mod cost estimates appear beside each mod, in pence (p).\n')
-        if edition == 'friends':
-            instructions.write('The shared key allows full translation up to 5p (GBP 0.05). A personal OpenRouter key removes this app limit.\n')
-        instructions.write('Translate destiny menu is always exempt from this limit.\n')
-        instructions.write('Estimates cover all extracted text, even on resume. See Options > About cost estimates.\n')
+        '1. Extract this ZIP outside the game folder and open GuiguModTranslator.exe.\n'
+        '2. Let automatic Steam game and translation-plugin setup finish.\n'
+        '3. Choose a provider in Translation models.\n'
+        '   Google Translate: no key, experimental web service; may be throttled.\n'
+        '   OpenRouter Free: your own key, account-wide daily quotas.\n'
+        '   OpenRouter Paid: your own key and credit.\n'
+        '4. Select a mod, choose Translate and install, then restart the game.\n\n'
+        'No API keys are included. Your own keys are saved encrypted on this PC.\n'
+        'Matching saved/shared translations are reused without requests.\n'
+        'Progress is saved; resume after a connection failure or service limit.\n'
+        'Updates are offered at startup and installed only when you choose.\n'
+        'Saved work remains in %LOCALAPPDATA%\\GuiguModTranslator.\n'
+        'The shared library downloads published text; it does not upload projects.\n\n'
+        'Requires 64-bit Windows 10/11, internet, and an owned Steam game.\n'
+        'Python and setup tools are included. Windows permission may be required.\n'
+        'Use Options > Choose game folder if detection fails, or Collect logs for help.\n'
+        'Private GitHub downloads need Options > GitHub access.\n'
+        'See https://github.com/JosephCarmichael/GuiguModTranslator for the user guide.\n',
+        encoding='utf-8')
     # Retain package license texts alongside the executable.
     site=Path(sys.prefix)/'Lib/site-packages'
     notices=[]
@@ -228,7 +165,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--offline', action='store_true', help='Skip paid live API checks')
     parser.add_argument('--side-by-side', action='store_true', help='Build new paths without replacing existing executables or ZIPs')
-    parser.add_argument('--edition', choices=('friends', 'personal'), default='friends')
+    parser.add_argument('--edition', choices=('public', 'friends', 'personal'), default='public')
     parser.add_argument('--use-prebuilt-runtime', action='store_true', help='Use the verified own-code runtime for hosted builds without a game installation')
     args = parser.parse_args()
     from app_config import installed_game

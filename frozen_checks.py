@@ -18,9 +18,9 @@ def check(report_path, live=False):
         from extractor import extract, read_json, MAGIC, MOD_KEY
         from translation import translate
         from app_config import service_profile
-        from app_config import RESOURCE_DIR, is_friends_build, APP_VERSION
+        from app_config import RESOURCE_DIR, is_friends_build, build_edition, APP_VERSION
         report['app_version'] = APP_VERSION
-        report['edition'] = 'friends' if is_friends_build() else 'personal'
+        report['edition'] = build_edition()
         import hashlib
         from installer import LOADER
         runtime = RESOURCE_DIR / 'runtime'
@@ -42,7 +42,9 @@ def check(report_path, live=False):
         node = get_typetree_node(49, UnityVersion.from_str('2020.3.9f1'))
         assert node
         report['checks'].append('Unity reader, native codecs and embedded type data')
-        with tempfile.TemporaryDirectory() as directory:
+        from contextlib import ExitStack
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as isolated:
             temp = Path(directory); mod = temp/'mod'; mod.mkdir()
             data = json.dumps({'items':{'LocalText':[{'id':1,'key':'item1','ch':'<r>恢复灵力</r> {0}'}]}},ensure_ascii=False).encode()
             (mod/'ModExportData.cache').write_bytes(MAGIC+bytes((v+MOD_KEY[i%len(MOD_KEY)])&255 for i,v in enumerate(data)))
@@ -52,9 +54,30 @@ def check(report_path, live=False):
             assert {u['source'] for u in p['units']}=={'<r>恢复灵力</r> {0}','宝物说明','宝剑'}
             assert not p['coverage']['counts'].get('unreadable')
             report['checks'].append('Encoded mod, YAML, Excel, JSON and CSV export')
-            profile=service_profile()
-            report['provider'],report['model']=profile['provider'],profile['model']
-            report['checks'].append('Bundled translation access found (key not logged)')
+            import api_access
+            if report['frozen']:
+                assert not (RESOURCE_DIR / 'bundled_service.json').exists()
+            credentials = temp / 'test-credentials'
+            credentials.mkdir()
+            isolated.enter_context(patch('app_config.data_dir', return_value=credentials))
+            isolated.enter_context(patch('api_access.data_dir', return_value=credentials))
+            isolated.enter_context(patch('api_access.RESOURCE_DIR', credentials))
+            isolated.enter_context(patch('app_config.RESOURCE_DIR', credentials))
+            isolated.enter_context(patch('app_config.translation_mode', return_value='paid'))
+            isolated.enter_context(patch('translation_cost.translation_mode', return_value='paid'))
+            try:
+                service_profile()
+            except ValueError:
+                pass
+            else:
+                raise AssertionError('Clean app unexpectedly has translation credentials')
+            assert service_profile(mode='google')['keyless']
+            test_key = 'sk-or-v1-' + 'offline-personal-fixture-' * 3
+            api_access.save_openrouter_key(test_key)
+            profile = service_profile()
+            assert profile['personal_key']
+            report['provider'], report['model'] = profile['provider'], profile['model']
+            report['checks'].append('No bundled key; clean app uses Google without credentials; user key stored with Windows encryption')
             # Exercise the bundled thread pool, response ownership and saving
             # without making extra paid requests during portable validation.
             import io
@@ -190,43 +213,22 @@ def check(report_path, live=False):
             expensive = {'mod': {'id': 'expensive'}, 'coverage': {'files': []},
                          'units': [{**parallel['units'][0], 'source': '宝剑' * 50000, 'translation': ''}]}
             assert not full_translation_allowed(estimate_project(expensive))
-            if is_friends_build():
-                with patch('translation.request_batch') as paid:
-                    try:
-                        translate(expensive, temp/'blocked')
-                    except PermissionError as error:
-                        assert '5p' in str(error)
-                    else:
-                        raise AssertionError('Friends full-mod limit was bypassed')
-                    paid.assert_not_called()
-                report['checks'].append('Friends limit blocks expensive mods before requests')
-                import api_access
-                personal_data = temp/'personal-key-data'; personal_data.mkdir()
-                test_key = 'sk-or-v1-' + 'offline-personal-fixture-' * 3
-                with patch('api_access.data_dir', return_value=personal_data), \
-                     patch('app_config.data_dir', return_value=personal_data):
-                    api_access.save_openrouter_key(test_key)
-                    assert test_key not in (personal_data/api_access.ACCESS_FILE).read_text()
-                    assert service_profile()['personal_key'] and service_profile()['api_key'] == test_key
-                    import copy
-                    with patch('translation.request_batch', return_value=['Sword']) as personal_request:
-                        personal_result = translate(copy.deepcopy(expensive), temp/'personal-unlimited')
-                    assert personal_result['translated'] == 1
-                    assert personal_request.call_args.args[1]['api_key'] == test_key
-                    api_access.use_shared_key()
-                    assert not service_profile()['personal_key']
-                    with patch('translation.request_batch') as shared_request:
-                        try:
-                            translate(copy.deepcopy(expensive), temp/'shared-limited-again')
-                        except PermissionError:
-                            pass
-                        else:
-                            raise AssertionError('Removing the personal key did not restore the shared cap')
-                        shared_request.assert_not_called()
-                report['checks'].append('Personal OpenRouter key: real Windows encryption, unlimited full-mod translation with chosen key, shared cap restored on removal (offline requests)')
+            enforce_translation_policy(expensive)
+            import copy
+            with patch('translation.request_batch', return_value=['Sword']) as personal_request:
+                result = translate(copy.deepcopy(expensive), temp/'personal-unlimited')
+            assert result['translated'] == 1
+            assert personal_request.call_args.args[1]['api_key'] == test_key
+            api_access.remove_openrouter_key()
+            try:
+                service_profile()
+            except ValueError:
+                pass
             else:
-                enforce_translation_policy(expensive)
-                report['checks'].append('Personal edition has no full-mod cost restriction')
+                raise AssertionError('Removed key silently fell back to another credential')
+            assert service_profile(mode='google')['keyless']
+            api_access.save_openrouter_key(test_key)
+            report['checks'].append('Own key permits translation; removal cannot fall back to shared credentials')
             from destinies import PROJECT_ID
             expensive['mod']['id'] = PROJECT_ID
             expensive['destiny_fields'] = [{'source': expensive['units'][0]['source'], 'field': 'tips'}]
@@ -339,10 +341,11 @@ def check(report_path, live=False):
             report['checks'].append('App update archive and executable checksums verified before staging (offline transport)')
             if live:
                 p['units']=[u for u in p['units'] if u['source'].startswith('<r>')]
-                result=translate(p,temp/'output')
+                with patch('translation.service_profile', return_value=service_profile(mode='google')):
+                    result=translate(p,temp/'output')
                 assert result['translated']==1 and result['failed']==0
                 report['translation']=p['units'][0]['translation']
-                report['checks'].append('Live DeepSeek translation with formatting preserved')
+                report['checks'].append('Live Google web translation with formatting preserved')
         report['result']='passed'
     except Exception as exc:
         report['result']='failed'

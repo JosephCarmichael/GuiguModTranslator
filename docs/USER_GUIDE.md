@@ -4,7 +4,7 @@
 
 ## Install and translate
 
-Download the Friends ZIP from [Releases](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest),
+Download the Public ZIP from [Releases](https://github.com/JosephCarmichael/GuiguModTranslator/releases/latest),
 extract it outside the game folder, and open `GuiguModTranslator.exe`.
 The current repository is private; your GitHub account needs access.
 
@@ -22,27 +22,35 @@ If detection fails, use **Options → Choose game folder**. **Retry setup** resu
 interrupted setup. **Collect logs** copies a diagnostic report and saves
 `Guigu-Logs.txt` beside the app; review the report before sharing it.
 
-## Translation keys and limits
+## Translation providers and keys
 
-Use **API key… → Save personal key** to use your own OpenRouter account.
-The key is encrypted for your Windows account and stored locally. Saving validates
-its format; the first request checks access and credit. Personal-key errors do
-not switch to the shared account. **Use shared key** removes the personal key.
+Open **Translation models…** to choose:
 
-In the Friends edition, the shared key permits full-mod estimates up to
-**5p (£0.05)**. A personal key removes that app restriction. The separate
-**Translate destiny menu** project is exempt from the shared-key cost cap.
+- **Google Translate:** no key, selected by default on new public installs.
+  This experimental option uses Google's web service. Text is sent to Google.
+  Requests are paced and serialized; availability and limits can change.
+  A rejected request stops the job, preserving completed entries for resuming.
+- **OpenRouter Free:** your own OpenRouter key, with an adjustable minimum
+  intelligence score. The app uses qualifying zero-price models, rotates models
+  after failed responses, and never falls back to paid translation.
+- **OpenRouter Paid:** your own key and OpenRouter credit. Check the estimate
+  before translating. Actual charges depend on requests, retries, and current
+  provider pricing.
 
-Estimates include the full extracted mod, even text already saved. Actual
-charges depend on requests made. Incomplete estimates block full-mod translation
-with the Friends shared key. **Options → About cost estimates** explains the
-calculation.
+No provider credential is bundled. **API key… → Save personal key** stores your
+OpenRouter key encrypted for your Windows account. Saving checks its format,
+not its credit or validity. **Remove saved key** disables it without deleting
+translations or silently reactivating a legacy key. Google needs no API key.
 
-The **Free** model option is not in the published v1.4.0 executable. OpenRouter's
-free-model quota belongs to the account: normally 50 requests per UTC day, or
-1,000 after at least $10 in lifetime credit purchases, with 20 requests/minute.
-Retries and title translations also use requests. Rotating models does not create
-a separate daily allowance. See [current limits](https://openrouter.ai/docs/api/reference/limits).
+OpenRouter's free-model quota belongs to the account: normally 50 requests per
+UTC day, or 1,000 after at least $10 in lifetime credit purchases, with 20
+requests/minute. Retries and title translations also use requests. Rotating
+models does not multiply the quota. See [current limits](https://openrouter.ai/docs/api/reference/limits).
+
+Google has no app-imposed 50-call quota; its web service can still throttle
+requests. Text around formatting tokens may translate less naturally because
+tokens, line breaks, numbers, and glossary terms are protected. Review important
+wording in the editor.
 
 ## Saved work and shared translations
 
@@ -73,7 +81,7 @@ as text to avoid automatic conversions.
 
 **Translate all** includes discovered mods at or below the slider's per-mod
 estimate, cheapest first, regardless of the search filter. The combined cost
-can exceed the slider value. The Friends shared-key cap still applies.
+can exceed the slider value. Google and OpenRouter Free show a zero-cost estimate.
 **Cancel all** preserves completed progress.
 
 Use **Find untranslated destinies** to scan character-creation text, then
@@ -95,7 +103,10 @@ and a token entered in **Options → GitHub access**. Give it only the access ne
 to read this repository. This is separate from the translation API key.
 Public repositories can be read without a GitHub token.
 
-Older 1.3.x apps need a manual download to gain the updater.
+Older 1.3.x apps need a manual download to gain the updater. Friends and Personal
+v1.4.0 apps can update to the Public package. Existing provider preferences and
+personal keys are preserved. If a previous shared key was selected, choose Google
+or enter your own OpenRouter key; the public package supplies no shared key.
 Source checkouts are updated with Git.
 
 ## Coverage and removal

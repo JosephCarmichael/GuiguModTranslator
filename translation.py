@@ -29,6 +29,13 @@ class BatchTooLarge(TranslationError):
     pass
 
 
+class BatchValues(list):
+    """List-compatible result retaining the model that actually answered."""
+    def __init__(self, values, model):
+        super().__init__(values)
+        self.model = model
+
+
 class ProviderError(Exception):
     def __init__(self, code, headers=None):
         self.code = code
@@ -162,6 +169,18 @@ def restore(text, tokens):
 def request_batch(texts, profile, target, stop, glossary=None, gate=None):
     if stop():
         raise InterruptedError('Translation cancelled')
+    if profile.get('provider') == 'Google Translate':
+        from google_translate import request_batch as google_batch
+        return BatchValues(google_batch(texts, target, stop, glossary, gate), 'google-web')
+    free = profile.get('free_only', False)
+    free_account = None
+    if free:
+        from free_models import discover, account, daily_limit
+        if profile.get('provider') != 'OpenRouter':
+            raise TranslationError('Free translation requires OpenRouter.')
+        models = discover(profile['minimum_intelligence'])
+        free_account = account(profile)
+        models = free_account.order(models)
     system = (
         'You translate Chinese player-facing text from Tale of Immortal, a Chinese cultivation fantasy game, '
         f'into {target}. Return ONLY a JSON array of strings with exactly one output per input, in the same order. '
@@ -175,13 +194,14 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
             {'role': 'user', 'content': json.dumps(texts, ensure_ascii=False)}], 'max_tokens': 8192,
             'temperature': 0.2, 'stream': False}
     if profile['provider'] == 'OpenRouter':
-        body['reasoning'] = {'enabled': False}
-        body['provider'] = {'allow_fallbacks': False}
+        if free:
+            body['provider'] = {'allow_fallbacks': True,
+                                'max_price': {'prompt': 0, 'completion': 0, 'request': 0}}
+        else:
+            body['reasoning'] = {'enabled': False}
+            body['provider'] = {'allow_fallbacks': False}
     else:
         body['thinking'] = {'type': 'disabled'}
-    request = urllib.request.Request(profile['endpoint'], data=json.dumps(body).encode('utf-8'),
-                headers={'Authorization': 'Bearer ' + profile['api_key'], 'Content-Type': 'application/json',
-                         'X-Title': 'Guigu Mod Translator'})
     gate = gate or RequestGate()
     for attempt in range(MAX_REQUEST_ATTEMPTS):
         if stop():
@@ -189,6 +209,12 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
         gate.acquire(stop)
         code, headers = None, None
         try:
+            if free:
+                free_account.acquire(stop)
+                body['model'] = models[attempt % len(models)]['id']
+            request = urllib.request.Request(profile['endpoint'], data=json.dumps(body).encode('utf-8'),
+                        headers={'Authorization': 'Bearer ' + profile['api_key'], 'Content-Type': 'application/json',
+                                 'X-Title': 'Guigu Mod Translator'})
             from translation_balance import tracker
             balance = tracker()
             with balance.request(profile):
@@ -200,6 +226,8 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
                 # responses that require a retry because their text is invalid.
                 balance.record_response(profile, result)
             if result.get('error'):
+                if free and daily_limit(result['error']):
+                    raise TranslationError('OpenRouter daily free quota reached. Progress is saved; resume after the quota resets. Switching models does not reset this quota.')
                 raise ProviderError(provider_error_code(result['error']))
             message = result['choices'][0]
             if message.get('finish_reason') == 'length':
@@ -209,11 +237,25 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
             values = json.loads(content)
             if not isinstance(values, list) or len(values) != len(texts) or not all(isinstance(v, str) for v in values):
                 raise ValueError('Wrong response shape')
+            if free and any(not value.strip() or value == source or
+                            re.findall(r'\\V\[\d+\]', value) != re.findall(r'\\V\[\d+\]', source) or
+                            (target.lower() in ('en', 'english') and CJK.search(value))
+                            for source, value in zip(texts, values)):
+                raise ValueError('Free model returned untranslated text or changed placeholders')
             gate.succeeded()
-            return values
+            return BatchValues(values, result.get('model') or body['model'])
         except urllib.error.HTTPError as exc:
             code, headers = exc.code, exc.headers
-            exc.close()
+            try:
+                if free and code == 429:
+                    try:
+                        error = json.loads(exc.read()).get('error', {})
+                    except (ValueError, AttributeError, OSError):
+                        error = {}
+                    if daily_limit(error):
+                        raise TranslationError('OpenRouter daily free quota reached. Progress is saved; resume after the quota resets. Switching models does not reset this quota.')
+            finally:
+                exc.close()
         except ProviderError as exc:
             code, headers = exc.code, exc.headers
         except (urllib.error.URLError, TimeoutError, OSError):
@@ -222,13 +264,18 @@ def request_batch(texts, profile, target, stop, glossary=None, gate=None):
             code = 'response'
         finally:
             gate.release()
-        if code in (401, 402, 403) or isinstance(code, int) and code not in (408, 429, 500, 502, 503, 504):
+        retryable = (408, 429, 500, 502, 503, 504) + ((404,) if free else ())
+        if code in (401, 402, 403) or isinstance(code, int) and code not in retryable:
             reason = {401: 'The API key was rejected.', 402: 'The account or key has insufficient credit.',
                       403: 'The provider denied access or blocked this request.'}.get(code, 'The provider rejected this request.')
             gate.events.put({'time_utc': datetime.now(timezone.utc).isoformat(), 'code': code, 'reason': reason, 'terminal': True})
             raise TranslationError(f'{profile["provider"]} HTTP {code}: {reason} Progress is saved.')
         delay = retry_delay(headers, attempt)
         gate.recover(code, delay, attempt + 1)
+        if free:
+            free_account.defer(delay)
+            gate.events.put({'model': body['model'], 'code': code, 'reason': error_label(code),
+                             'next_model': models[(attempt + 1) % len(models)]['id'], 'free_only': True})
         if attempt == MAX_REQUEST_ATTEMPTS - 1:
             code_text = f'HTTP {code}' if isinstance(code, int) else code
             raise TranslationError(f'{profile["provider"]} {code_text}: {error_label(code)} persisted after '
@@ -260,6 +307,14 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
     # Saved/shared text requires neither credit nor an API key. If any paid work
     # remains, the full-mod cap and the request use the same credential snapshot.
     profile = service_profile()
+    if profile.get('keyless'):
+        # Google web requests are serialized and checkpointed one entry at a time.
+        concurrency, batch_size = 1, 1
+        progress('Google Translate (experimental): no API key; service throttling can pause translation.')
+    if profile.get('free_only'):
+        from free_models import discover
+        models = discover(profile['minimum_intelligence'])
+        progress(f'Free mode: {len(models)} qualifying models, intelligence ≥ {profile["minimum_intelligence"]:g}; paced to 20 requests/minute. Daily account quotas apply.')
     enforce_translation_policy(project, batch_size, profile=profile)
     terms = json.loads(Path(glossary).read_text(encoding='utf-8-sig')) if glossary else None
     if terms is not None and not isinstance(terms, dict):
@@ -316,13 +371,18 @@ def translate(project, folder, target='en', progress=None, stop=None, glossary=N
                 unit['translation_error'] = 'Formatting placeholders changed'
                 continue
             result = restore(value, tokens)
+            if profile.get('keyless'):
+                # A restored percentage must not merge with an English word
+                # and become a printf placeholder such as %s.
+                result = re.sub(r'(\d+(?:\.\d+)?%)(?=[A-Za-z_])', r'\1 ', result)
             error = validate_translation(unit['source'], result)
             if error or not result.strip() or result == unit['source']:
                 failed += 1
                 unit['translation_error'] = error or 'No translation returned'
                 continue
             unit.update(translation=result, status='needs_review' if CJK.search(result) else 'machine',
-                        engine=DEFAULT_ENGINE, model=profile['model'])
+                        engine='google-web' if profile.get('keyless') else 'openrouter-free' if profile.get('free_only') else DEFAULT_ENGINE,
+                        model=getattr(values, 'model', profile['model']))
             unit.pop('retranslation_pending', None)
             unit.pop('translation_error', None)
             done += 1

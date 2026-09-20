@@ -1,4 +1,4 @@
-"""Publish both verified editions and their checksums as a GitHub release."""
+"""Publish the credential-free public package and their checksums as a GitHub release."""
 import argparse
 import json
 import subprocess
@@ -13,8 +13,18 @@ ROOT = Path(__file__).resolve().parent
 
 
 def publish(publish_now=False):
-    packages = {edition: ROOT / 'release' / ('GuiguModTranslator-' + edition.title() + '.zip')
-                for edition in ('friends', 'personal')}
+    archive = ROOT / 'release' / 'GuiguModTranslator-Public.zip'
+    # Existing Friends/Personal installations migrate to the same key-free app.
+    packages = {edition: archive for edition in ('public', 'friends', 'personal')}
+    import tempfile
+    import zipfile
+    from PyInstaller.archive.readers import CArchiveReader
+    from release_security import verify_archive
+    with tempfile.TemporaryDirectory() as folder:
+        executable = Path(folder) / 'GuiguModTranslator.exe'
+        with zipfile.ZipFile(archive) as package:
+            executable.write_bytes(package.read('GuiguModTranslator/GuiguModTranslator.exe'))
+        verify_archive(CArchiveReader(str(executable)))
     manifest = ROOT / 'release' / 'update-manifest.json'
     write_release_manifest(packages, manifest)
     tag = 'v' + APP_VERSION
@@ -27,16 +37,17 @@ def publish(publish_now=False):
     if existing.returncode == 0:
         print(tag + ' is already published. Bump APP_VERSION for the next update.')
         return
-    notes = ('Mod artwork, automatic persistent English titles, verified completion ticks,\n'
-             'retranslation with backups, shared translations and in-app GitHub updates.\n\n'
-             'Download Friends for shared access with the 5p cap, or Personal for your own unrestricted edition.\n'
-             'Existing saved translations and API settings are preserved.\n')
+    notes = ('Download GuiguModTranslator-Public.zip for Windows 10/11 (64-bit).\n\n'
+             'No API keys are included. Google Translate is available without a key as an experimental web option.\n'
+             'OpenRouter Free and Paid use your own key. Saved translations and settings are preserved.\n'
+             'Google may throttle requests; OpenRouter Free has account-wide daily quotas.\n'
+             'Existing Friends/Personal apps can install this release through the updater.\n')
     with tempfile.TemporaryDirectory(prefix='Guigu release ') as folder:
         body = Path(folder) / 'notes.md'
         body.write_text(notes, encoding='utf-8')
         subprocess.run(['gh', 'release', 'create', tag, '--repo', REPOSITORY, '--target', 'main',
                         '--title', 'Guigu Mod Translator ' + APP_VERSION, '--notes-file', str(body),
-                        str(packages['friends']), str(packages['personal']), str(manifest)], check=True)
+                        str(archive), str(manifest)], check=True)
 
 
 if __name__ == '__main__':
